@@ -16,3 +16,6 @@ __pycache__/
 staticfiles/
 media/
 db.sqlite3
+
+# Modelos de reconocimiento facial (~37MB, se bajan con ml_models/download.sh)
+backend/asistencia/ml_models/*.onnx

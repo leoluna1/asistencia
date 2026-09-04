@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "django-backend",
-      "runtimeExecutable": "/Users/leitolu/Desktop/proyectos/asistencia/backend/venv/bin/python",
-      "runtimeArgs": ["/Users/leitolu/Desktop/proyectos/asistencia/backend/manage.py", "runserver", "0.0.0.0:8000"],
-      "port": 8000
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "exec /Users/leitolu/Desktop/proyectos/asistencia/backend/venv/bin/python /Users/leitolu/Desktop/proyectos/asistencia/backend/manage.py runserver 0.0.0.0:$PORT"],
+      "port": 8000,
+      "autoPort": true
     }
   ]
 }

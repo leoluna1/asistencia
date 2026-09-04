@@ -9,10 +9,10 @@ class Postulante(models.Model):
     cedula = models.CharField(max_length=10, unique=True)
     estatura_cm = models.PositiveSmallIntegerField()
     foto = models.ImageField(upload_to="postulantes/")
-    # ponytail: embedding de 512 floats (SFace/Dlib vía deepface), comparado con numpy en
-    # Python al momento de verificar — sin pgvector hasta que el volumen de postulantes lo
-    # justifique (ver docs/00-REFERENCIA-PROYECTO.md).
-    embedding = ArrayField(models.FloatField(), size=512, null=True, blank=True)
+    # ponytail: embedding de 128 floats (OpenCV SFace), comparado con numpy en Python al
+    # momento de verificar — sin pgvector hasta que el volumen de postulantes lo justifique
+    # (ver docs/00-REFERENCIA-PROYECTO.md).
+    embedding = ArrayField(models.FloatField(), size=128, null=True, blank=True)
     sede = models.CharField(max_length=100)
     creado_en = models.DateTimeField(auto_now_add=True)
 
