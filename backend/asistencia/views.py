@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from .facial import UMBRAL_COINCIDENCIA, RostroNoDetectado, get_embedding, mejor_coincidencia
 from .models import Asistencia, Postulante
-from .serializers import PostulanteSerializer
+from .serializers import AsistenciaSerializer, PostulanteSerializer
 
 
 def _leer_imagen(foto):
@@ -97,6 +97,15 @@ class VerificarAsistenciaView(APIView):
                 "verificado_en": asistencia.verificado_en,
             }
         )
+
+
+class ListaAsistenciasView(generics.ListAPIView):
+    """Lista en vivo del dashboard: las asistencias más recientes primero (MVP, sin
+    filtros ni exportación — decisión confirmada). El cliente hace polling cada 3-5s."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = AsistenciaSerializer
+    queryset = Asistencia.objects.select_related("postulante").order_by("-verificado_en")
 
 
 class ForzarAsistenciaView(APIView):
