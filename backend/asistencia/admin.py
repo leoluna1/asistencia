@@ -8,6 +8,9 @@ class PostulanteAdmin(admin.ModelAdmin):
     list_display = ("cedula", "nombres", "apellidos", "sede", "creado_en")
     search_fields = ("cedula", "nombres", "apellidos")
     list_filter = ("sede",)
+    # embedding lo calcula el pipeline de reconocimiento facial a partir de la foto,
+    # nunca se edita a mano.
+    exclude = ("embedding",)
 
 
 @admin.register(Asistencia)

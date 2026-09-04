@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "django-backend",
+      "runtimeExecutable": "/Users/leitolu/Desktop/proyectos/asistencia/backend/venv/bin/python",
+      "runtimeArgs": ["/Users/leitolu/Desktop/proyectos/asistencia/backend/manage.py", "runserver", "0.0.0.0:8000"],
+      "port": 8000
+    }
+  ]
+}
