@@ -3,12 +3,18 @@
 Sin TensorFlow ni InsightFace: los modelos .onnx corren directo sobre cv2.dnn.
 Ver docs/00-REFERENCIA-PROYECTO.md para el porqué de esta elección.
 """
+from __future__ import annotations
+
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 MODELS_DIR = Path(__file__).resolve().parent / "ml_models"
+
+# Umbral oficial de opencv_zoo/models/face_recognition_sface/sface.py (_threshold_cosine).
+# Por debajo de esto, SFace lo considera una persona distinta.
+UMBRAL_COINCIDENCIA = 0.363
 
 _detector = None
 _recognizer = None
@@ -63,3 +69,25 @@ def get_embedding(image_bgr: np.ndarray) -> list[float]:
     alineado = recognizer.alignCrop(image_bgr, mejor_rostro)
     embedding = recognizer.feature(alineado)
     return embedding.flatten().tolist()
+
+
+def mejor_coincidencia(
+    embedding_consulta: list[float], candidatos: list[tuple[int, list[float]]]
+) -> tuple[int, float] | None:
+    """1:N — compara un embedding contra todos los candidatos (id, embedding).
+
+    Devuelve (id, similitud_coseno) del más parecido, o None si no hay candidatos.
+    No aplica el umbral — el llamador decide qué hacer con la similitud devuelta.
+    """
+    if not candidatos:
+        return None
+
+    ids, embeddings = zip(*candidatos)
+    matriz = np.array(embeddings)
+    consulta = np.array(embedding_consulta)
+
+    similitudes = (matriz @ consulta) / (
+        np.linalg.norm(matriz, axis=1) * np.linalg.norm(consulta)
+    )
+    mejor = int(np.argmax(similitudes))
+    return ids[mejor], float(similitudes[mejor])
