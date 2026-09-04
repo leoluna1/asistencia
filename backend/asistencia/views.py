@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -92,6 +93,52 @@ class VerificarAsistenciaView(APIView):
                 "verificado": True,
                 "ya_registrado": not creada,
                 "confianza": confianza,
+                "postulante": PostulanteSerializer(postulante, context={"request": request}).data,
+                "verificado_en": asistencia.verificado_en,
+            }
+        )
+
+
+class ForzarAsistenciaView(APIView):
+    """Override manual: un agente autenticado fuerza el paso cuando la verificación
+    automática falla y se agotaron los reintentos (decisión de fallback confirmada)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        cedula = request.data.get("cedula")
+        sede = request.data.get("sede")
+        if not cedula:
+            raise ValidationError({"cedula": "Este campo es obligatorio."})
+        if not sede:
+            raise ValidationError({"sede": "Este campo es obligatorio."})
+
+        try:
+            postulante = Postulante.objects.get(cedula=cedula)
+        except Postulante.DoesNotExist:
+            raise ValidationError(
+                {"cedula": "No existe un postulante registrado con esa cédula."}
+            )
+
+        # Igual que en la verificación automática: registro único, no se duplica ni se
+        # pisa el método si ya había pasado (auto o manual) por otro puesto.
+        asistencia, creada = Asistencia.objects.get_or_create(
+            postulante=postulante,
+            defaults={
+                "sede": sede,
+                "metodo": Asistencia.Metodo.MANUAL,
+                "forzado_por": request.user,
+            },
+        )
+
+        return Response(
+            {
+                "verificado": True,
+                "ya_registrado": not creada,
+                "metodo": asistencia.metodo,
+                "forzado_por": asistencia.forzado_por.get_username()
+                if asistencia.forzado_por
+                else None,
                 "postulante": PostulanteSerializer(postulante, context={"request": request}).data,
                 "verificado_en": asistencia.verificado_en,
             }
