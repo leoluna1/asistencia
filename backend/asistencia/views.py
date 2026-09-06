@@ -6,7 +6,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .facial import UMBRAL_COINCIDENCIA, RostroNoDetectado, get_embedding, mejor_coincidencia
+from .facial import (
+    UMBRAL_COINCIDENCIA,
+    RostroNoDetectado,
+    calcular_embedding,
+    detectar_rostro,
+    es_rostro_real,
+    get_embedding,
+    mejor_coincidencia,
+)
 from .models import Asistencia, Postulante
 from .serializers import AsistenciaSerializer, PostulanteSerializer
 
@@ -56,9 +64,24 @@ class VerificarAsistenciaView(APIView):
             raise ValidationError({"foto": "No se pudo leer la imagen."})
 
         try:
-            embedding_consulta = get_embedding(imagen_bgr)
+            imagen_bgr, rostro = detectar_rostro(imagen_bgr)
         except RostroNoDetectado:
             return Response({"verificado": False, "motivo": "no_se_detecto_rostro"})
+
+        # Anti-spoofing antes de comparar identidad: sin esto, una foto de otra persona
+        # mostrada a la cámara podría marcarle la asistencia (riesgo confirmado en
+        # docs/00-REFERENCIA-PROYECTO.md, inaceptable en un proceso de reclutamiento).
+        es_real, confianza_vida = es_rostro_real(imagen_bgr, rostro)
+        if not es_real:
+            return Response(
+                {
+                    "verificado": False,
+                    "motivo": "posible_suplantacion",
+                    "confianza_vida": confianza_vida,
+                }
+            )
+
+        embedding_consulta = calcular_embedding(imagen_bgr, rostro)
 
         candidatos = list(
             Postulante.objects.exclude(embedding__isnull=True).values_list("id", "embedding")

@@ -227,6 +227,14 @@ proceso de reclutamiento policial. La investigación anterior no cubría esto.
   se justifica — un falso positivo (dejar pasar una foto) es inaceptable en un examen de policía,
   no es una feature especulativa.
 
+**Implementado (2026-09-06)**: en vez de `Silent-Face-Anti-Spoofing` original (PyTorch), se usa
+`MiniFASNetV2` exportado a ONNX (Apache 2.0, `yakhyo/face-anti-spoofing`) corriendo con
+`cv2.dnn.readNetFromONNX` — mismo patrón que YuNet/SFace, cero dependencias nuevas (nada de
+PyTorch ni onnxruntime). Se corre en `VerificarAsistenciaView` antes de comparar identidad, no en
+el registro (ahí el postulante no puede estar suplantando a nadie más que a sí mismo). Ver
+`asistencia/facial.py::es_rostro_real` y sus tests en `asistencia/tests/test_facial.py`
+(validado contra las imágenes de muestra reales/falsas del repo original de MiniVision).
+
 ### Hosting con cifras reales
 
 - Hetzner es 3–5× más barato en cómputo puro que proveedores con sede en EE.UU. (ej. 4GB/2vCPU:

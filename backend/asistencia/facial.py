@@ -1,7 +1,8 @@
-"""Detección y embedding facial con OpenCV (YuNet + SFace, ambos Apache 2.0).
+"""Detección, embedding y anti-spoofing facial con OpenCV (YuNet + SFace +
+MiniFASNetV2, todos Apache 2.0).
 
-Sin TensorFlow ni InsightFace: los modelos .onnx corren directo sobre cv2.dnn.
-Ver docs/00-REFERENCIA-PROYECTO.md para el porqué de esta elección.
+Sin TensorFlow ni InsightFace ni onnxruntime: los modelos .onnx corren directo
+sobre cv2.dnn. Ver docs/00-REFERENCIA-PROYECTO.md para el porqué de esta elección.
 """
 from __future__ import annotations
 
@@ -16,8 +17,14 @@ MODELS_DIR = Path(__file__).resolve().parent / "ml_models"
 # Por debajo de esto, SFace lo considera una persona distinta.
 UMBRAL_COINCIDENCIA = 0.363
 
+# Recorte y tamaño de entrada esperados por MiniFASNetV2 (ver anti_spoof_predict.py del
+# repo original minivision-ai/Silent-Face-Anti-Spoofing).
+ESCALA_ANTISPOOFING = 2.7
+TAMANO_ANTISPOOFING = (80, 80)
+
 _detector = None
 _recognizer = None
+_antispoofing = None
 
 
 class RostroNoDetectado(Exception):
@@ -42,8 +49,20 @@ def _get_recognizer():
     return _recognizer
 
 
-def get_embedding(image_bgr: np.ndarray) -> list[float]:
-    """Detecta el rostro más confiable de la imagen y devuelve su embedding (128 floats).
+def _get_antispoofing():
+    global _antispoofing
+    if _antispoofing is None:
+        _antispoofing = cv2.dnn.readNetFromONNX(str(MODELS_DIR / "MiniFASNetV2.onnx"))
+    return _antispoofing
+
+
+def detectar_rostro(image_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Detecta el rostro más confiable de la imagen.
+
+    Devuelve (imagen, rostro): la imagen puede venir redimensionada respecto a la
+    original, y rostro es la fila cruda de YuNet [x, y, w, h, 5 landmarks..., score]
+    en las coordenadas de esa imagen — ambos hacen falta para el resto del pipeline
+    (embedding y anti-spoofing), por eso se devuelven juntos.
 
     Lanza RostroNoDetectado si no encuentra ningún rostro.
     """
@@ -64,11 +83,67 @@ def get_embedding(image_bgr: np.ndarray) -> list[float]:
 
     # faces: filas [x, y, w, h, 5 landmarks..., score] — nos quedamos con el de mayor score.
     mejor_rostro = faces[np.argmax(faces[:, -1])]
+    return image_bgr, mejor_rostro
 
+
+def calcular_embedding(image_bgr: np.ndarray, rostro: np.ndarray) -> list[float]:
+    """Embedding (128 floats) del rostro ya detectado por detectar_rostro."""
     recognizer = _get_recognizer()
-    alineado = recognizer.alignCrop(image_bgr, mejor_rostro)
+    alineado = recognizer.alignCrop(image_bgr, rostro)
     embedding = recognizer.feature(alineado)
     return embedding.flatten().tolist()
+
+
+def get_embedding(image_bgr: np.ndarray) -> list[float]:
+    """Atajo de detectar_rostro + calcular_embedding para cuando no hace falta
+    anti-spoofing (registro: la foto la sube el propio postulante para sí mismo,
+    no hay a quién suplantar todavía)."""
+    image_bgr, rostro = detectar_rostro(image_bgr)
+    return calcular_embedding(image_bgr, rostro)
+
+
+def _recortar_para_antispoofing(image_bgr: np.ndarray, rostro: np.ndarray) -> np.ndarray:
+    src_h, src_w = image_bgr.shape[:2]
+    x, y, box_w, box_h = (int(v) for v in rostro[:4])
+
+    escala = min((src_h - 1) / box_h, (src_w - 1) / box_w, ESCALA_ANTISPOOFING)
+    nuevo_w, nuevo_h = box_w * escala, box_h * escala
+    cx, cy = x + box_w / 2, y + box_h / 2
+
+    x1 = max(0, int(cx - nuevo_w / 2))
+    y1 = max(0, int(cy - nuevo_h / 2))
+    x2 = min(src_w - 1, int(cx + nuevo_w / 2))
+    y2 = min(src_h - 1, int(cy + nuevo_h / 2))
+
+    recorte = image_bgr[y1 : y2 + 1, x1 : x2 + 1]
+    return cv2.resize(recorte, TAMANO_ANTISPOOFING)
+
+
+def es_rostro_real(image_bgr: np.ndarray, rostro: np.ndarray) -> tuple[bool, float]:
+    """Anti-spoofing: distingue un rostro real de una foto/pantalla mostrada a la
+    cámara (riesgo señalado en docs/00-REFERENCIA-PROYECTO.md: alguien podría marcar
+    la asistencia de otra persona con una foto suya). image_bgr y rostro deben venir
+    de detectar_rostro (misma imagen ya redimensionada que usó el detector).
+
+    Devuelve (es_real, confianza) — confianza es la probabilidad softmax de la clase
+    ganadora (real o spoof), no solo de "real".
+    """
+    recorte = _recortar_para_antispoofing(image_bgr, rostro)
+
+    # Sin swapRB ni normalización manual: el modelo espera BGR crudo en 0-255 porque
+    # esta exportación a ONNX ya incluye la normalización dentro del propio grafo —
+    # verificado contra las imágenes de muestra reales/falsas del repo original
+    # (dividir por 255 acá encima rompe la predicción).
+    blob = recorte.astype(np.float32).transpose(2, 0, 1)[np.newaxis, ...]
+
+    red = _get_antispoofing()
+    red.setInput(blob)
+    salida = red.forward()[0]
+
+    probs = np.exp(salida - np.max(salida))
+    probs /= probs.sum()
+    clase = int(np.argmax(probs))
+    return clase == 1, float(probs[clase])
 
 
 def mejor_coincidencia(
