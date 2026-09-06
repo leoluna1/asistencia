@@ -1,0 +1,12 @@
+<div class="camara">
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  } @else {
+    <video #video autoplay playsinline muted></video>
+    <button mat-raised-button color="primary" [disabled]="!listo()" (click)="capturar()">
+      <mat-icon>photo_camera</mat-icon>
+      Capturar
+    </button>
+  }
+  <canvas #canvas hidden></canvas>
+</div>

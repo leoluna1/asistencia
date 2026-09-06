@@ -1,0 +1,36 @@
+<div class="pantalla">
+  <mat-card class="tarjeta">
+    <h2>Verificación de asistencia</h2>
+
+    @if (!enSesion() && !resultado()) {
+      <mat-form-field appearance="outline">
+        <mat-label>Sede</mat-label>
+        <input matInput [(ngModel)]="sede" (keyup.enter)="iniciar()" />
+      </mat-form-field>
+      <button mat-raised-button color="primary" [disabled]="!sede" (click)="iniciar()">
+        Iniciar verificación
+      </button>
+    }
+
+    @if (enSesion()) {
+      <app-camera-capture (capturado)="onFotoCapturada($event)" />
+      <p>Intento {{ intentos() + 1 }} de 3…</p>
+    }
+
+    @if (resultado()?.verificado) {
+      <p class="ok">
+        ✔ {{ resultado()?.postulante?.nombres }} {{ resultado()?.postulante?.apellidos }} —
+        asistencia {{ resultado()?.ya_registrado ? 'ya estaba registrada' : 'registrada' }}.
+      </p>
+      <button mat-raised-button color="primary" (click)="resultado.set(null)">
+        Verificar otro postulante
+      </button>
+    }
+
+    @if (agotado()) {
+      <p class="error">No se pudo reconocer al postulante después de 3 intentos.</p>
+      <button mat-raised-button (click)="reintentarDesdeElInicio()">Reintentar</button>
+      <a mat-raised-button color="accent" routerLink="/dashboard">Llamar a un agente</a>
+    }
+  </mat-card>
+</div>

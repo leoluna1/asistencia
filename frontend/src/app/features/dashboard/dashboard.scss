@@ -1,0 +1,48 @@
+.dashboard {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px;
+
+  .encabezado {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+
+    h2 {
+      flex: 1;
+      margin: 0;
+    }
+  }
+
+  .tarjeta-manual {
+    margin-bottom: 24px;
+    padding: 16px;
+
+    .fila-manual {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .error {
+      color: #b00020;
+    }
+
+    .ok {
+      color: #2e7d32;
+    }
+  }
+
+  .tabla {
+    width: 100%;
+  }
+
+  .miniatura {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+}
