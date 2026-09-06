@@ -6,6 +6,7 @@ dist/
 !.env.example
 coverage/
 *.log
+.playwright-mcp/
 .DS_Store
 Thumbs.db
 
