@@ -6,6 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { CameraCapture } from '../../shared/camera-capture/camera-capture';
 import { PostulantesService } from '../../core/postulantes.service';
+import { primerMensajeDeError } from '../../core/errores';
 
 @Component({
   selector: 'app-registro',
@@ -41,6 +42,12 @@ export class Registro {
     this.fotoPreview.set(URL.createObjectURL(foto));
   }
 
+  retomarFoto(): void {
+    this.foto.set(null);
+    this.fotoPreview.set(null);
+    this.error.set(null);
+  }
+
   get formCompleto(): boolean {
     return !!(
       this.nombres &&
@@ -72,8 +79,7 @@ export class Registro {
       this.foto.set(null);
       this.fotoPreview.set(null);
     } catch (e: any) {
-      const detalle = e?.error && JSON.stringify(e.error);
-      this.error.set(detalle || 'No se pudo registrar al postulante.');
+      this.error.set(primerMensajeDeError(e?.error) || 'No se pudo registrar al postulante.');
     } finally {
       this.enviando.set(false);
     }

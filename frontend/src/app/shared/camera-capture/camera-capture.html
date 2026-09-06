@@ -2,7 +2,11 @@
   @if (error()) {
     <p class="error">{{ error() }}</p>
   } @else {
-    <video #video autoplay playsinline muted></video>
+    <div class="visor">
+      <video #video autoplay playsinline muted></video>
+      <div class="guia" aria-hidden="true"></div>
+    </div>
+    <p class="ayuda">Centra tu rostro dentro del óvalo, mirando de frente.</p>
     <button mat-raised-button color="primary" [disabled]="!listo()" (click)="capturar()">
       <mat-icon>photo_camera</mat-icon>
       Capturar

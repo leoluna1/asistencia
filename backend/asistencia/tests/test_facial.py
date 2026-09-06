@@ -18,6 +18,7 @@ from asistencia.facial import (
     es_rostro_real,
     get_embedding,
     mejor_coincidencia,
+    validar_calidad_registro,
 )
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -61,6 +62,38 @@ class AntiSpoofingTest(SimpleTestCase):
         imagen, rostro = detectar_rostro(_leer_fixture("rostro_spoof.jpg"))
         es_real, _confianza = es_rostro_real(imagen, rostro)
         self.assertFalse(es_real)
+
+
+def _rostro(x=140, y=100, w=200, h=280, ojos=(190, 180, 290, 180), nariz=(240, 230), score=0.95):
+    """Fila sintética estilo YuNet, para probar validar_calidad_registro sin
+    depender de una foto real por cada caso de rechazo."""
+    ox1, oy1, ox2, oy2 = ojos
+    nx, ny = nariz
+    return np.array([x, y, w, h, ox1, oy1, ox2, oy2, nx, ny, 0, 0, 0, 0, score])
+
+
+class ValidarCalidadRegistroTest(SimpleTestCase):
+    IMAGEN = np.zeros((480, 480, 3), dtype=np.uint8)
+
+    def test_rostro_bien_encuadrado_pasa(self):
+        self.assertIsNone(validar_calidad_registro(self.IMAGEN, _rostro()))
+
+    def test_rechaza_score_bajo(self):
+        self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, _rostro(score=0.5)))
+
+    def test_rechaza_rostro_lejano(self):
+        self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, _rostro(w=50, h=70)))
+
+    def test_rechaza_rostro_no_centrado(self):
+        self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, _rostro(x=10, y=10)))
+
+    def test_rechaza_cabeza_inclinada(self):
+        rostro = _rostro(ojos=(190, 150, 290, 220))  # 70px de diferencia vertical entre ojos
+        self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, rostro))
+
+    def test_rechaza_rostro_girado(self):
+        rostro = _rostro(nariz=(285, 230))  # nariz pegada al ojo derecho, no centrada
+        self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, rostro))
 
 
 class MejorCoincidenciaTest(SimpleTestCase):

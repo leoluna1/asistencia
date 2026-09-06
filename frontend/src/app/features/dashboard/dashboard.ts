@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
 import { AsistenciaService } from '../../core/asistencia.service';
 import { AuthService } from '../../core/auth.service';
+import { primerMensajeDeError } from '../../core/errores';
 import { FilaAsistencia } from '../../core/models';
 
 const INTERVALO_POLLING_MS = 4000;
@@ -82,8 +83,7 @@ export class Dashboard implements OnInit, OnDestroy {
       this.cedulaManual = '';
       this.actualizar();
     } catch (e: any) {
-      const detalle = e?.error && JSON.stringify(e.error);
-      this.errorManual.set(detalle || 'No se pudo forzar la asistencia.');
+      this.errorManual.set(primerMensajeDeError(e?.error) || 'No se pudo forzar la asistencia.');
     } finally {
       this.enviandoManual.set(false);
     }

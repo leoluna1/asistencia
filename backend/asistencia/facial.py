@@ -22,6 +22,14 @@ UMBRAL_COINCIDENCIA = 0.363
 ESCALA_ANTISPOOFING = 2.7
 TAMANO_ANTISPOOFING = (80, 80)
 
+# Umbrales de calidad para la foto DE REGISTRO (la de referencia, más estricta que
+# verificación). Ajustados a ojo — recalibrar con fotos reales si rechaza de más/menos.
+UMBRAL_SCORE_REGISTRO = 0.9
+PROPORCION_MIN_ROSTRO = 0.20  # ancho del rostro / ancho de la imagen
+MARGEN_CENTRADO = 0.20  # desvío máx. del centro, como fracción del ancho/alto
+TOLERANCIA_ROLL = 0.35  # |dif. y de ojos| / distancia interocular, cabeza inclinada
+RANGO_YAW = (0.32, 0.68)  # posición relativa de la nariz entre los ojos, cara girada
+
 _detector = None
 _recognizer = None
 _antispoofing = None
@@ -100,6 +108,48 @@ def get_embedding(image_bgr: np.ndarray) -> list[float]:
     no hay a quién suplantar todavía)."""
     image_bgr, rostro = detectar_rostro(image_bgr)
     return calcular_embedding(image_bgr, rostro)
+
+
+def validar_calidad_registro(image_bgr: np.ndarray, rostro: np.ndarray) -> str | None:
+    """Chequeos de encuadre para la foto DE REGISTRO (no para verificación: ahí ya
+    alcanza con detectar+comparar). Sin esto, una foto de perfil, lejana o mal
+    centrada queda como referencia y arruina el matching de ahí en adelante.
+
+    No detecta lentes, gorra, bufanda ni cabello sobre la cara — YuNet solo da 5
+    landmarks (ojos, nariz, boca), no hay forma confiable de ver eso con lo que ya
+    corre en el pipeline. Eso se pide por texto en la UI y lo valida el agente que
+    supervisa el registro, no el servidor (agregar un clasificador de atributos
+    faciales para esto es una dependencia nueva completa, no una línea de más).
+
+    Devuelve el primer problema encontrado (mensaje para mostrarle al postulante),
+    o None si la foto pasa.
+    """
+    h, w = image_bgr.shape[:2]
+    x, y, box_w, box_h = rostro[0:4]
+    ojo1_x, ojo1_y, ojo2_x, ojo2_y = rostro[4:8]
+    nariz_x, _nariz_y = rostro[8:10]
+    score = rostro[14]
+
+    if score < UMBRAL_SCORE_REGISTRO:
+        return "La foto no es suficientemente nítida. Repite con buena luz, de frente a la cámara."
+
+    if box_w < PROPORCION_MIN_ROSTRO * w:
+        return "Acércate más a la cámara."
+
+    centro_x, centro_y = x + box_w / 2, y + box_h / 2
+    if abs(centro_x - w / 2) > MARGEN_CENTRADO * w or abs(centro_y - h / 2) > MARGEN_CENTRADO * h:
+        return "Céntrate dentro del recuadro de la cámara."
+
+    dist_interocular = abs(ojo2_x - ojo1_x) or 1.0
+    if abs(ojo2_y - ojo1_y) / dist_interocular > TOLERANCIA_ROLL:
+        return "Mantén la cabeza derecha, no la inclines."
+
+    x_min, x_max = min(ojo1_x, ojo2_x), max(ojo1_x, ojo2_x)
+    posicion_nariz = (nariz_x - x_min) / ((x_max - x_min) or 1.0)
+    if not RANGO_YAW[0] <= posicion_nariz <= RANGO_YAW[1]:
+        return "Mira directo a la cámara, no gires el rostro."
+
+    return None
 
 
 def _recortar_para_antispoofing(image_bgr: np.ndarray, rostro: np.ndarray) -> np.ndarray:

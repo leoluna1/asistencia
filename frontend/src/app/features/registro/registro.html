@@ -29,7 +29,13 @@
 
     @if (fotoPreview()) {
       <img class="preview" [src]="fotoPreview()" alt="Foto capturada" />
+      <button mat-stroked-button type="button" (click)="retomarFoto()">Retomar foto</button>
     } @else {
+      <ul class="requisitos">
+        <li>Quítate lentes, gorra o cualquier cosa que cubra tu rostro</li>
+        <li>Sin bufanda, capucha ni cabello sobre la cara</li>
+        <li>Rostro descubierto y bien peinado</li>
+      </ul>
       <app-camera-capture (capturado)="onFotoCapturada($event)" />
     }
 

@@ -12,8 +12,8 @@ from .facial import (
     calcular_embedding,
     detectar_rostro,
     es_rostro_real,
-    get_embedding,
     mejor_coincidencia,
+    validar_calidad_registro,
 )
 from .models import Asistencia, Postulante
 from .serializers import AsistenciaSerializer, PostulanteSerializer
@@ -38,12 +38,17 @@ class RegistroPostulanteView(generics.CreateAPIView):
             raise ValidationError({"foto": "No se pudo leer la imagen."})
 
         try:
-            embedding = get_embedding(imagen_bgr)
+            imagen_bgr, rostro = detectar_rostro(imagen_bgr)
         except RostroNoDetectado:
             raise ValidationError(
                 {"foto": "No se detectó un rostro en la foto. Sube una foto más clara, de frente."}
             )
 
+        problema = validar_calidad_registro(imagen_bgr, rostro)
+        if problema:
+            raise ValidationError({"foto": problema})
+
+        embedding = calcular_embedding(imagen_bgr, rostro)
         serializer.save(embedding=embedding)
 
 
