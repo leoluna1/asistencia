@@ -1,5 +1,5 @@
 <div class="pantalla">
-  <mat-card class="tarjeta">
+  <mat-card appearance="outlined" class="tarjeta">
     <h2>Ingresar al sistema</h2>
 
     <mat-form-field appearance="outline">
@@ -16,7 +16,7 @@
       <p class="error">{{ error() }}</p>
     }
 
-    <button mat-raised-button color="primary" [disabled]="cargando()" (click)="ingresar()">
+    <button mat-flat-button color="primary" [disabled]="cargando()" (click)="ingresar()">
       Ingresar
     </button>
   </mat-card>

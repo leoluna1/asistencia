@@ -18,7 +18,6 @@ from asistencia.facial import (
     es_rostro_real,
     get_embedding,
     mejor_coincidencia,
-    posible_gorra,
     validar_calidad_registro,
 )
 
@@ -101,19 +100,6 @@ class ValidarCalidadRegistroTest(SimpleTestCase):
     def test_rechaza_rostro_girado(self):
         rostro = _rostro(nariz=(285, 230))  # nariz pegada al ojo derecho, no centrada
         self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, rostro))
-
-
-class PosibleGorraTest(SimpleTestCase):
-    def test_frente_oscura_vs_mejillas_claras_se_marca_como_gorra(self):
-        imagen = np.full((480, 480, 3), 200, dtype=np.uint8)
-        rostro = _rostro()
-        x, y, w, h = int(rostro[0]), int(rostro[1]), int(rostro[2]), int(rostro[3])
-        imagen[y : y + int(h * 0.12), x : x + w] = 20  # franja superior oscura (gorra)
-        self.assertTrue(posible_gorra(imagen, rostro))
-
-    def test_brillo_uniforme_no_se_marca_como_gorra(self):
-        imagen = np.full((480, 480, 3), 200, dtype=np.uint8)
-        self.assertFalse(posible_gorra(imagen, _rostro()))
 
 
 class MejorCoincidenciaTest(SimpleTestCase):

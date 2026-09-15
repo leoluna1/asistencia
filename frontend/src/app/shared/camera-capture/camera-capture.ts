@@ -32,10 +32,12 @@ export class CameraCapture implements AfterViewInit, OnDestroy {
   readonly listo = signal(false);
   readonly error = signal<string | null>(null);
   readonly aviso = signal<string | null>(null);
+  readonly capturando = signal(false);
 
   private stream: MediaStream | null = null;
   private temporizador: ReturnType<typeof setInterval> | null = null;
   private sondeando = false;
+  private esperaCaptura: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private postulantes: PostulantesService) {}
 
@@ -71,7 +73,10 @@ export class CameraCapture implements AfterViewInit, OnDestroy {
 
       if (resultado.ok) {
         this.detenerSondeo();
-        this.capturado.emit(frame);
+        // Pausa breve mostrando "no te muevas" antes de emitir: sin esto, la
+        // persona seguía acomodándose justo cuando el frame ya se había tomado.
+        this.capturando.set(true);
+        this.esperaCaptura = setTimeout(() => this.capturado.emit(frame), 700);
       } else {
         this.aviso.set(resultado.motivo ?? null);
       }
@@ -113,6 +118,7 @@ export class CameraCapture implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.detenerSondeo();
+    if (this.esperaCaptura) clearTimeout(this.esperaCaptura);
     this.stream?.getTracks().forEach((track) => track.stop());
   }
 }

@@ -38,6 +38,10 @@
     &.ajustar {
       border-color: #e0a537;
     }
+
+    &.exito {
+      border-color: #2e7d32;
+    }
   }
 
   // Chip de estado superpuesto al visor, como el indicador de una cámara real.
@@ -67,6 +71,10 @@
 
     &.ajustar {
       color: #f5c26b;
+    }
+
+    &.exito {
+      color: #81c784;
     }
   }
 

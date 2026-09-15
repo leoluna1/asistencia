@@ -4,11 +4,24 @@
   } @else {
     <div class="visor">
       <video #video autoplay playsinline muted></video>
-      <div class="guia" [class.ajustar]="!!aviso()" aria-hidden="true"></div>
+      <div
+        class="guia"
+        [class.ajustar]="!!aviso() && !capturando()"
+        [class.exito]="capturando()"
+        aria-hidden="true"
+      ></div>
       @if (listo()) {
-        <div class="estado" [class.ajustar]="!!aviso()">
-          <mat-icon>{{ aviso() ? 'warning_amber' : 'center_focus_weak' }}</mat-icon>
-          <span>{{ aviso() ?? 'Buscando buen encuadre…' }}</span>
+        <div class="estado" [class.ajustar]="!!aviso() && !capturando()" [class.exito]="capturando()">
+          @if (capturando()) {
+            <mat-icon>check_circle</mat-icon>
+            <span>¡Perfecto! No te muevas…</span>
+          } @else if (aviso()) {
+            <mat-icon>warning_amber</mat-icon>
+            <span>{{ aviso() }}</span>
+          } @else {
+            <mat-icon>center_focus_weak</mat-icon>
+            <span>Centra tu rostro y no te muevas</span>
+          }
         </div>
       }
     </div>

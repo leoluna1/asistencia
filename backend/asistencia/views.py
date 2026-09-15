@@ -16,7 +16,6 @@ from .facial import (
     detectar_rostro,
     es_rostro_real,
     mejor_coincidencia,
-    posible_gorra,
     validar_calidad_registro,
 )
 from .models import Asistencia, FotoPostulante, Postulante
@@ -115,8 +114,7 @@ class ProbarEncuadreView(APIView):
     ~1s mientras el postulante se acomoda, y esto le dice si ya está bien encuadrado
     o qué corregir. Reusa la MISMA validar_calidad_registro que corre en el registro
     real (ver _procesar_foto_de_registro) — el aviso en vivo y el rechazo final nunca
-    se contradicen. La gorra es la excepción: heurística aparte (ver posible_gorra),
-    solo avisa acá, nunca bloquea el registro real."""
+    se contradicen."""
 
     # Público (ver nota en RegistroPostulanteView: evita 401 por un token viejo).
     authentication_classes = []
@@ -138,11 +136,6 @@ class ProbarEncuadreView(APIView):
         problema = validar_calidad_registro(imagen_bgr, rostro)
         if problema:
             return Response({"ok": False, "motivo": problema})
-
-        if posible_gorra(imagen_bgr, rostro):
-            return Response(
-                {"ok": False, "motivo": "Parece que tienes puesta una gorra o visera. Quítatela."}
-            )
 
         return Response({"ok": True})
 

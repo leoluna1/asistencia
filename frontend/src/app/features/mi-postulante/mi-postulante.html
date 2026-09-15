@@ -1,74 +1,84 @@
-<div class="pantalla">
-  <mat-card class="tarjeta">
-    <h2>Mis datos</h2>
+@if (cargando()) {
+  <div class="cargando">Cargando…</div>
+} @else if (postulante(); as datos) {
+  <div class="tablero">
+    <aside class="panel-identidad">
+      <img class="foto" [src]="datos.foto" alt="Foto de registro" />
+      <h1 class="nombre">{{ datos.nombres }} {{ datos.apellidos }}</h1>
+      <div class="acento"></div>
 
-    @if (cargando()) {
-      <p>Cargando...</p>
-    } @else if (postulante(); as datos) {
-      <img class="preview" [src]="datos.foto" alt="Foto de registro" />
+      <div class="dato-identidad">
+        <span class="etiqueta">Cédula</span>
+        <span class="mono valor">{{ datos.cedula }}</span>
+      </div>
 
-      <p class="solo-lectura"><strong>Cédula:</strong> {{ datos.cedula }}</p>
-      <p class="solo-lectura">
-        <strong>Sede:</strong> {{ datos.sede || 'Sin asignar' }}
-      </p>
+      <div class="chip">{{ datos.sede || 'Sede sin asignar' }}</div>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Nombres</mat-label>
-        <input matInput required [(ngModel)]="nombres" />
-      </mat-form-field>
+      <button class="cerrar-sesion" type="button" (click)="cerrarSesion()">Cerrar sesión</button>
+    </aside>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Apellidos</mat-label>
-        <input matInput required [(ngModel)]="apellidos" />
-      </mat-form-field>
+    <section class="panel-datos">
+      <h2 class="titulo-seccion">Datos personales</h2>
+      <div class="grilla">
+        <mat-form-field appearance="outline">
+          <mat-label>Nombres</mat-label>
+          <input matInput required [(ngModel)]="nombres" />
+        </mat-form-field>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Estatura (cm)</mat-label>
-        <input matInput required type="number" [(ngModel)]="estatura_cm" />
-      </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Apellidos</mat-label>
+          <input matInput required [(ngModel)]="apellidos" />
+        </mat-form-field>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Fecha de nacimiento</mat-label>
-        <input matInput required type="date" [(ngModel)]="fecha_nacimiento" />
-      </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Fecha de nacimiento</mat-label>
+          <input matInput required type="date" [(ngModel)]="fecha_nacimiento" />
+        </mat-form-field>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Teléfono</mat-label>
-        <input matInput required type="tel" [(ngModel)]="telefono" />
-      </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Estatura (cm)</mat-label>
+          <input matInput required type="number" [(ngModel)]="estatura_cm" />
+        </mat-form-field>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Correo</mat-label>
-        <input matInput required type="email" [(ngModel)]="correo" />
-      </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Género</mat-label>
+          <mat-select required [(ngModel)]="genero">
+            <mat-option value="M">Masculino</mat-option>
+            <mat-option value="F">Femenino</mat-option>
+            <mat-option value="OTRO">Otro</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Género</mat-label>
-        <mat-select required [(ngModel)]="genero">
-          <mat-option value="M">Masculino</mat-option>
-          <mat-option value="F">Femenino</mat-option>
-          <mat-option value="OTRO">Otro</mat-option>
-        </mat-select>
-      </mat-form-field>
+      <h2 class="titulo-seccion">Contacto</h2>
+      <div class="grilla">
+        <mat-form-field appearance="outline">
+          <mat-label>Teléfono</mat-label>
+          <input matInput required type="tel" [(ngModel)]="telefono" />
+        </mat-form-field>
 
-      @if (error()) {
-        <p class="error">{{ error() }}</p>
-      }
-      @if (exito()) {
-        <p class="ok">Datos actualizados correctamente.</p>
-      }
+        <mat-form-field appearance="outline">
+          <mat-label>Correo</mat-label>
+          <input matInput required type="email" [(ngModel)]="correo" />
+        </mat-form-field>
+      </div>
 
-      <div class="acciones">
+      <div class="pie">
+        @if (error()) {
+          <p class="error">{{ error() }}</p>
+        }
+        @if (exito()) {
+          <p class="ok">Datos actualizados correctamente.</p>
+        }
         <button
-          mat-raised-button
+          mat-flat-button
           color="primary"
           [disabled]="!datosCompletos || guardando()"
           (click)="guardar()"
         >
           Guardar cambios
         </button>
-        <button mat-stroked-button type="button" (click)="cerrarSesion()">Cerrar sesión</button>
       </div>
-    }
-  </mat-card>
-</div>
+    </section>
+  </div>
+}

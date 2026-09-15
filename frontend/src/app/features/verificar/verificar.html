@@ -1,5 +1,5 @@
 <div class="pantalla">
-  <mat-card class="tarjeta">
+  <mat-card appearance="outlined" class="tarjeta">
     <h2>Verificación de asistencia</h2>
 
     @if (!enSesion() && !resultado()) {
@@ -7,7 +7,7 @@
         <mat-label>Sede</mat-label>
         <input matInput [(ngModel)]="sede" (keyup.enter)="iniciar()" />
       </mat-form-field>
-      <button mat-raised-button color="primary" [disabled]="!sede" (click)="iniciar()">
+      <button mat-flat-button color="primary" [disabled]="!sede" (click)="iniciar()">
         Iniciar verificación
       </button>
     }
@@ -22,15 +22,15 @@
         ✔ {{ resultado()?.postulante?.nombres }} {{ resultado()?.postulante?.apellidos }} —
         asistencia {{ resultado()?.ya_registrado ? 'ya estaba registrada' : 'registrada' }}.
       </p>
-      <button mat-raised-button color="primary" (click)="resultado.set(null)">
+      <button mat-flat-button color="primary" (click)="resultado.set(null)">
         Verificar otro postulante
       </button>
     }
 
     @if (agotado()) {
       <p class="error">No se pudo reconocer al postulante después de 3 intentos.</p>
-      <button mat-raised-button (click)="reintentarDesdeElInicio()">Reintentar</button>
-      <a mat-raised-button color="accent" routerLink="/dashboard">Llamar a un agente</a>
+      <button mat-flat-button (click)="reintentarDesdeElInicio()">Reintentar</button>
+      <a mat-flat-button color="accent" routerLink="/dashboard">Llamar a un agente</a>
     }
   </mat-card>
 </div>

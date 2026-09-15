@@ -1,9 +1,11 @@
 <div class="pantalla">
-  <mat-card class="tarjeta">
+  <mat-card appearance="outlined" class="tarjeta">
     <h2>Registro de postulante</h2>
 
     @if (paso() === 'datos') {
       <p class="requisito">Todos los campos son obligatorios.</p>
+
+      <h3 class="seccion">Datos personales</h3>
 
       <mat-form-field appearance="outline">
         <mat-label>Nombres</mat-label>
@@ -17,27 +19,32 @@
 
       <mat-form-field appearance="outline">
         <mat-label>Cédula</mat-label>
-        <input matInput required [(ngModel)]="cedula" />
-      </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Estatura (cm)</mat-label>
-        <input matInput required type="number" [(ngModel)]="estatura_cm" />
+        <input
+          matInput
+          required
+          inputmode="numeric"
+          [value]="cedula"
+          (input)="onCedulaInput($event)"
+        />
+        @if (cedulaInvalida) {
+          <mat-hint class="hint-error">Esa cédula no es válida.</mat-hint>
+        } @else {
+          <mat-hint>10 dígitos, sin espacios ni guiones.</mat-hint>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline">
         <mat-label>Fecha de nacimiento</mat-label>
-        <input matInput required type="date" [(ngModel)]="fecha_nacimiento" />
-      </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Teléfono</mat-label>
-        <input matInput required type="tel" [(ngModel)]="telefono" />
-      </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Correo</mat-label>
-        <input matInput required type="email" [(ngModel)]="correo" />
+        <input
+          matInput
+          required
+          [matDatepicker]="picker"
+          [min]="fechaMinima"
+          [max]="fechaMaxima"
+          [(ngModel)]="fechaNacimiento"
+        />
+        <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
+        <mat-datepicker #picker startView="multi-year"></mat-datepicker>
       </mat-form-field>
 
       <mat-form-field appearance="outline">
@@ -50,13 +57,38 @@
       </mat-form-field>
 
       <mat-form-field appearance="outline">
+        <mat-label>Estatura (cm)</mat-label>
+        <input matInput required type="number" [(ngModel)]="estatura_cm" />
+      </mat-form-field>
+
+      <h3 class="seccion">Contacto y acceso</h3>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Teléfono</mat-label>
+        <input
+          matInput
+          required
+          type="tel"
+          inputmode="numeric"
+          [value]="telefono"
+          (input)="onTelefonoInput($event)"
+        />
+        <mat-hint>10 dígitos, ej. 09XXXXXXXX.</mat-hint>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Correo</mat-label>
+        <input matInput required type="email" [(ngModel)]="correo" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
         <mat-label>Contraseña</mat-label>
         <input matInput required type="password" [(ngModel)]="password" />
         <mat-hint>La vas a usar después para revisar o corregir tus datos.</mat-hint>
       </mat-form-field>
 
       <button
-        mat-raised-button
+        mat-flat-button
         color="primary"
         [disabled]="!datosCompletos"
         (click)="continuarAFoto()"
@@ -82,7 +114,7 @@
       }
 
       <button
-        mat-raised-button
+        mat-flat-button
         color="primary"
         [disabled]="!formCompleto || enviando()"
         (click)="registrar()"

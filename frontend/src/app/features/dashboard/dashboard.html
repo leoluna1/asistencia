@@ -17,7 +17,7 @@
         <input matInput [(ngModel)]="sedeManual" />
       </mat-form-field>
       <button
-        mat-raised-button
+        mat-flat-button
         color="accent"
         [disabled]="!cedulaManual || !sedeManual || enviandoManual()"
         (click)="forzarManual()"
