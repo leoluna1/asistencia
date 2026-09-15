@@ -1,9 +1,16 @@
 <div class="pantalla">
   <mat-card class="tarjeta">
-    <h2>Registro de postulante</h2>
+    <h2>Mis datos</h2>
 
-    @if (paso() === 'datos') {
-      <p class="requisito">Todos los campos son obligatorios.</p>
+    @if (cargando()) {
+      <p>Cargando...</p>
+    } @else if (postulante(); as datos) {
+      <img class="preview" [src]="datos.foto" alt="Foto de registro" />
+
+      <p class="solo-lectura"><strong>Cédula:</strong> {{ datos.cedula }}</p>
+      <p class="solo-lectura">
+        <strong>Sede:</strong> {{ datos.sede || 'Sin asignar' }}
+      </p>
 
       <mat-form-field appearance="outline">
         <mat-label>Nombres</mat-label>
@@ -13,11 +20,6 @@
       <mat-form-field appearance="outline">
         <mat-label>Apellidos</mat-label>
         <input matInput required [(ngModel)]="apellidos" />
-      </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Cédula</mat-label>
-        <input matInput required [(ngModel)]="cedula" />
       </mat-form-field>
 
       <mat-form-field appearance="outline">
@@ -49,46 +51,24 @@
         </mat-select>
       </mat-form-field>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Contraseña</mat-label>
-        <input matInput required type="password" [(ngModel)]="password" />
-        <mat-hint>La vas a usar después para revisar o corregir tus datos.</mat-hint>
-      </mat-form-field>
-
-      <button
-        mat-raised-button
-        color="primary"
-        [disabled]="!datosCompletos"
-        (click)="continuarAFoto()"
-      >
-        Continuar a la foto
-      </button>
-      @if (!datosCompletos) {
-        <p class="error">Completa todos los campos para continuar.</p>
-      }
-    } @else {
-      @if (fotoPreview()) {
-        <img class="preview" [src]="fotoPreview()" alt="Foto capturada" />
-        <button mat-stroked-button type="button" (click)="retomarFoto()">Retomar foto</button>
-      } @else {
-        <app-camera-capture [sondeoEnVivo]="true" (capturado)="onFotoCapturada($event)" />
-      }
-
       @if (error()) {
         <p class="error">{{ error() }}</p>
       }
       @if (exito()) {
-        <p class="ok">Postulante registrado correctamente.</p>
+        <p class="ok">Datos actualizados correctamente.</p>
       }
 
-      <button
-        mat-raised-button
-        color="primary"
-        [disabled]="!formCompleto || enviando()"
-        (click)="registrar()"
-      >
-        Registrar
-      </button>
+      <div class="acciones">
+        <button
+          mat-raised-button
+          color="primary"
+          [disabled]="!datosCompletos || guardando()"
+          (click)="guardar()"
+        >
+          Guardar cambios
+        </button>
+        <button mat-stroked-button type="button" (click)="cerrarSesion()">Cerrar sesión</button>
+      </div>
     }
   </mat-card>
 </div>

@@ -18,6 +18,7 @@ from asistencia.facial import (
     es_rostro_real,
     get_embedding,
     mejor_coincidencia,
+    posible_gorra,
     validar_calidad_registro,
 )
 
@@ -73,13 +74,19 @@ def _rostro(x=140, y=100, w=200, h=280, ojos=(190, 180, 290, 180), nariz=(240, 2
 
 
 class ValidarCalidadRegistroTest(SimpleTestCase):
-    IMAGEN = np.zeros((480, 480, 3), dtype=np.uint8)
+    # Brillo uniforme y alto a propósito: deja que cada test ejercite SU condición
+    # puntual sin toparse antes con el chequeo de luz (ver test_rechaza_poca_luz).
+    IMAGEN = np.full((480, 480, 3), 200, dtype=np.uint8)
 
     def test_rostro_bien_encuadrado_pasa(self):
         self.assertIsNone(validar_calidad_registro(self.IMAGEN, _rostro()))
 
     def test_rechaza_score_bajo(self):
         self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, _rostro(score=0.5)))
+
+    def test_rechaza_poca_luz(self):
+        imagen_oscura = np.full((480, 480, 3), 10, dtype=np.uint8)
+        self.assertIsNotNone(validar_calidad_registro(imagen_oscura, _rostro()))
 
     def test_rechaza_rostro_lejano(self):
         self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, _rostro(w=50, h=70)))
@@ -94,6 +101,19 @@ class ValidarCalidadRegistroTest(SimpleTestCase):
     def test_rechaza_rostro_girado(self):
         rostro = _rostro(nariz=(285, 230))  # nariz pegada al ojo derecho, no centrada
         self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, rostro))
+
+
+class PosibleGorraTest(SimpleTestCase):
+    def test_frente_oscura_vs_mejillas_claras_se_marca_como_gorra(self):
+        imagen = np.full((480, 480, 3), 200, dtype=np.uint8)
+        rostro = _rostro()
+        x, y, w, h = int(rostro[0]), int(rostro[1]), int(rostro[2]), int(rostro[3])
+        imagen[y : y + int(h * 0.12), x : x + w] = 20  # franja superior oscura (gorra)
+        self.assertTrue(posible_gorra(imagen, rostro))
+
+    def test_brillo_uniforme_no_se_marca_como_gorra(self):
+        imagen = np.full((480, 480, 3), 200, dtype=np.uint8)
+        self.assertFalse(posible_gorra(imagen, _rostro()))
 
 
 class MejorCoincidenciaTest(SimpleTestCase):

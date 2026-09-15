@@ -134,6 +134,22 @@ STATIC_URL = 'static/'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Fotos: disco local por defecto (dev y hasta que 20k fotos justifiquen otra cosa).
+# Con USE_S3=True en .env, pasa a object storage S3-compatible (DigitalOcean Spaces o
+# Hetzner, ya decidido en docs/00-REFERENCIA-PROYECTO.md) sin tocar código — solo
+# variables de entorno. Sin credenciales todavía no hay bucket que probar esto.
+USE_S3 = env.bool('USE_S3', default=False)
+if USE_S3:
+    INSTALLED_APPS.append('storages')
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
+    AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
+    AWS_S3_ENDPOINT_URL = env('AWS_S3_ENDPOINT_URL')  # ej. https://nyc3.digitaloceanspaces.com
+    AWS_S3_CUSTOM_DOMAIN = env('AWS_S3_CUSTOM_DOMAIN', default=None)  # CDN, si aplica
+    AWS_DEFAULT_ACL = 'public-read'
+    AWS_S3_FILE_OVERWRITE = False
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -146,9 +162,25 @@ CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS", default=["http://localhost:4200"]
 )
 
+# Umbrales de calidad de encuadre para la foto de registro (ver asistencia/facial.py).
+# Están "ajustados a ojo" (ver docs/00-REFERENCIA-PROYECTO.md) — quedan en env para
+# poder recalibrarlos con fotos reales sin tocar código ni redeployar, apenas haya
+# datos de rechazo/aceptación reales que lo justifiquen.
+ASISTENCIA_UMBRAL_SCORE_REGISTRO = env.float("ASISTENCIA_UMBRAL_SCORE_REGISTRO", default=0.9)
+ASISTENCIA_PROPORCION_MIN_ROSTRO = env.float("ASISTENCIA_PROPORCION_MIN_ROSTRO", default=0.20)
+ASISTENCIA_MARGEN_CENTRADO = env.float("ASISTENCIA_MARGEN_CENTRADO", default=0.20)
+ASISTENCIA_TOLERANCIA_ROLL = env.float("ASISTENCIA_TOLERANCIA_ROLL", default=0.35)
+ASISTENCIA_RANGO_YAW_MIN = env.float("ASISTENCIA_RANGO_YAW_MIN", default=0.32)
+ASISTENCIA_RANGO_YAW_MAX = env.float("ASISTENCIA_RANGO_YAW_MAX", default=0.68)
+ASISTENCIA_UMBRAL_BRILLO_MINIMO = env.float("ASISTENCIA_UMBRAL_BRILLO_MINIMO", default=60)
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
+    # Con miles de postulantes, /api/asistencias/ sin paginar crece sin límite y el
+    # dashboard lo pide entero cada pocos segundos — esto es lo mínimo, no un filtro.
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 50,
 }

@@ -2,7 +2,10 @@ import { Routes } from '@angular/router';
 import { authGuard } from './core/auth.guard';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'verificar', pathMatch: 'full' },
+  {
+    path: '',
+    loadComponent: () => import('./features/inicio/inicio').then((m) => m.Inicio)
+  },
   {
     path: 'verificar',
     loadComponent: () => import('./features/verificar/verificar').then((m) => m.Verificar)
@@ -20,5 +23,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard)
   },
-  { path: '**', redirectTo: 'verificar' }
+  {
+    path: 'mi-postulante',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/mi-postulante/mi-postulante').then((m) => m.MiPostulante)
+  },
+  { path: '**', redirectTo: '' }
 ];

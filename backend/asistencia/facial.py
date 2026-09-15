@@ -10,6 +10,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from django.conf import settings
 
 MODELS_DIR = Path(__file__).resolve().parent / "ml_models"
 
@@ -23,12 +24,20 @@ ESCALA_ANTISPOOFING = 2.7
 TAMANO_ANTISPOOFING = (80, 80)
 
 # Umbrales de calidad para la foto DE REGISTRO (la de referencia, más estricta que
-# verificación). Ajustados a ojo — recalibrar con fotos reales si rechaza de más/menos.
-UMBRAL_SCORE_REGISTRO = 0.9
-PROPORCION_MIN_ROSTRO = 0.20  # ancho del rostro / ancho de la imagen
-MARGEN_CENTRADO = 0.20  # desvío máx. del centro, como fracción del ancho/alto
-TOLERANCIA_ROLL = 0.35  # |dif. y de ojos| / distancia interocular, cabeza inclinada
-RANGO_YAW = (0.32, 0.68)  # posición relativa de la nariz entre los ojos, cara girada
+# verificación). Viven en settings/env (ASISTENCIA_*) para poder recalibrarlos con
+# fotos reales sin tocar código — ver docs/00-REFERENCIA-PROYECTO.md.
+UMBRAL_SCORE_REGISTRO = settings.ASISTENCIA_UMBRAL_SCORE_REGISTRO
+PROPORCION_MIN_ROSTRO = settings.ASISTENCIA_PROPORCION_MIN_ROSTRO  # ancho rostro / ancho imagen
+MARGEN_CENTRADO = settings.ASISTENCIA_MARGEN_CENTRADO  # desvío máx. del centro, fracción ancho/alto
+TOLERANCIA_ROLL = settings.ASISTENCIA_TOLERANCIA_ROLL  # |dif. y ojos| / dist. interocular
+RANGO_YAW = (settings.ASISTENCIA_RANGO_YAW_MIN, settings.ASISTENCIA_RANGO_YAW_MAX)  # posición nariz
+UMBRAL_BRILLO_MINIMO = settings.ASISTENCIA_UMBRAL_BRILLO_MINIMO  # brillo medio (0-255) del rostro
+
+# ponytail: heurística sin validar contra fotos reales (compara brillo frente vs.
+# mejillas) — puede fallar en ambos sentidos. Solo se usa como aviso EN VIVO durante
+# la captura (ver views.ProbarEncuadreView), nunca como motivo de rechazo en
+# validar_calidad_registro ni en el registro final.
+UMBRAL_DIFERENCIA_GORRA = 40
 
 _detector = None
 _recognizer = None
@@ -115,11 +124,10 @@ def validar_calidad_registro(image_bgr: np.ndarray, rostro: np.ndarray) -> str |
     alcanza con detectar+comparar). Sin esto, una foto de perfil, lejana o mal
     centrada queda como referencia y arruina el matching de ahí en adelante.
 
-    No detecta lentes, gorra, bufanda ni cabello sobre la cara — YuNet solo da 5
-    landmarks (ojos, nariz, boca), no hay forma confiable de ver eso con lo que ya
-    corre en el pipeline. Eso se pide por texto en la UI y lo valida el agente que
-    supervisa el registro, no el servidor (agregar un clasificador de atributos
-    faciales para esto es una dependencia nueva completa, no una línea de más).
+    No detecta lentes, gorra, bufanda ni cabello sobre la cara de forma confiable —
+    YuNet solo da 5 landmarks (ojos, nariz, boca). Para gorra hay una heurística
+    aparte (ver posible_gorra) usada solo como aviso en vivo, no acá: un rechazo
+    definitivo del registro necesita algo más confiable que esa heurística.
 
     Devuelve el primer problema encontrado (mensaje para mostrarle al postulante),
     o None si la foto pasa.
@@ -132,6 +140,9 @@ def validar_calidad_registro(image_bgr: np.ndarray, rostro: np.ndarray) -> str |
 
     if score < UMBRAL_SCORE_REGISTRO:
         return "La foto no es suficientemente nítida. Repite con buena luz, de frente a la cámara."
+
+    if _brillo_promedio(image_bgr, rostro) < UMBRAL_BRILLO_MINIMO:
+        return "Hay poca luz. Busca un lugar mejor iluminado."
 
     if box_w < PROPORCION_MIN_ROSTRO * w:
         return "Acércate más a la cámara."
@@ -150,6 +161,39 @@ def validar_calidad_registro(image_bgr: np.ndarray, rostro: np.ndarray) -> str |
         return "Mira directo a la cámara, no gires el rostro."
 
     return None
+
+
+def _brillo_promedio(image_bgr: np.ndarray, rostro: np.ndarray) -> float:
+    """Brillo medio (escala de grises, 0-255) del recorte del rostro detectado."""
+    x, y, w, h = (int(v) for v in rostro[0:4])
+    x, y = max(x, 0), max(y, 0)
+    recorte = image_bgr[y : y + h, x : x + w]
+    if recorte.size == 0:
+        return 255.0  # recorte inválido: no bloquear por luz, hay otros checks que sí aplican
+    return float(cv2.cvtColor(recorte, cv2.COLOR_BGR2GRAY).mean())
+
+
+def posible_gorra(image_bgr: np.ndarray, rostro: np.ndarray) -> bool:
+    """Heurística best-effort (NO un modelo entrenado): compara el brillo de la
+    franja superior del recorte (donde debería verse la frente descubierta) contra
+    una franja media (nariz/mejillas, siempre piel en un rostro real). Si la
+    superior es mucho más oscura, asume gorra/visera cubriendo la frente.
+
+    ponytail: sin fotos reales para calibrar UMBRAL_DIFERENCIA_GORRA — puede avisar
+    de más (pelo oscuro, sombra) o no avisar con gorra puesta. Solo se usa como aviso
+    en vivo durante la captura (ver views.ProbarEncuadreView); nunca bloquea el
+    registro final — ahí sigue rigiendo únicamente validar_calidad_registro.
+    """
+    x, y, w, h = (int(v) for v in rostro[0:4])
+    x, y = max(x, 0), max(y, 0)
+    gris = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+
+    franja_superior = gris[y : y + max(int(h * 0.12), 1), x : x + w]
+    franja_media = gris[y + int(h * 0.45) : y + int(h * 0.60), x : x + w]
+    if franja_superior.size == 0 or franja_media.size == 0:
+        return False
+
+    return float(franja_media.mean()) - float(franja_superior.mean()) > UMBRAL_DIFERENCIA_GORRA
 
 
 def _recortar_para_antispoofing(image_bgr: np.ndarray, rostro: np.ndarray) -> np.ndarray:

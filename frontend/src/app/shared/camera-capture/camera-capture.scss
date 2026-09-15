@@ -8,15 +8,20 @@
     position: relative;
     width: 480px;
     max-width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
   }
 
   video {
     width: 100%;
-    border-radius: 8px;
-    background: #000;
     display: block;
+    background: #000;
   }
 
+  // Guía tipo visor de cámara: aro suave + viñeta oscureciendo lo de afuera del
+  // óvalo, en vez de un borde rojo sólido. El color cambia según haya o no un
+  // aviso pendiente — neutro mientras busca, ámbar cuando hay que corregir algo.
+  // Nunca rojo: eso queda reservado para errores reales (sin acceso a cámara).
   .guia {
     position: absolute;
     top: 50%;
@@ -24,15 +29,52 @@
     width: 55%;
     height: 78%;
     transform: translate(-50%, -50%);
-    border: 3px solid #e53935;
+    border: 2px solid rgba(226, 232, 240, 0.9);
     border-radius: 50% / 60%;
+    box-shadow: 0 0 0 2000px rgba(15, 23, 32, 0.32);
     pointer-events: none;
+    transition: border-color 0.25s ease;
+
+    &.ajustar {
+      border-color: #e0a537;
+    }
+  }
+
+  // Chip de estado superpuesto al visor, como el indicador de una cámara real.
+  .estado {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 90%;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(15, 23, 32, 0.72);
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    line-height: 1.3;
+    text-align: center;
+
+    mat-icon {
+      flex-shrink: 0;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+
+    &.ajustar {
+      color: #f5c26b;
+    }
   }
 
   .ayuda {
     margin: 0;
     color: #555;
     font-size: 0.9rem;
+    text-align: center;
   }
 
   .error {

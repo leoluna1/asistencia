@@ -4,12 +4,21 @@
   } @else {
     <div class="visor">
       <video #video autoplay playsinline muted></video>
-      <div class="guia" aria-hidden="true"></div>
+      <div class="guia" [class.ajustar]="!!aviso()" aria-hidden="true"></div>
+      @if (listo()) {
+        <div class="estado" [class.ajustar]="!!aviso()">
+          <mat-icon>{{ aviso() ? 'warning_amber' : 'center_focus_weak' }}</mat-icon>
+          <span>{{ aviso() ?? 'Buscando buen encuadre…' }}</span>
+        </div>
+      }
     </div>
-    <p class="ayuda">Centra tu rostro dentro del óvalo, mirando de frente.</p>
-    <button mat-raised-button color="primary" [disabled]="!listo()" (click)="capturar()">
+    <p class="ayuda">
+      Quítate lentes, gorra o cualquier cosa que cubra tu rostro. Centra tu rostro
+      dentro del óvalo, mirando de frente.
+    </p>
+    <button mat-stroked-button [disabled]="!listo()" (click)="capturarAhora()">
       <mat-icon>photo_camera</mat-icon>
-      Capturar
+      Capturar ahora
     </button>
   }
   <canvas #canvas hidden></canvas>

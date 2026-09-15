@@ -4,8 +4,12 @@ export interface Postulante {
   apellidos: string;
   cedula: string;
   estatura_cm: number;
+  fecha_nacimiento: string;
+  telefono: string;
+  correo: string;
+  genero: 'M' | 'F' | 'OTRO';
   foto: string;
-  sede: string;
+  sede: string | null;
   creado_en: string;
 }
 

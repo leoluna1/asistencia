@@ -227,6 +227,22 @@ proceso de reclutamiento policial. La investigación anterior no cubría esto.
   se justifica — un falso positivo (dejar pasar una foto) es inaceptable en un examen de policía,
   no es una feature especulativa.
 
+**Escala a ~20.000 postulantes (2026-09-06)**: la arquitectura de matching (numpy vectorizado
+contra `ArrayField`) ya estaba pensada para este volumen, sin cambios. Lo que sí hacía falta:
+- `/api/asistencias/` paginado (antes devolvía toda la tabla en cada poll de 4s del dashboard) e
+  índice en `verificado_en`, que es por lo que se ordena.
+- Carga masiva: `python manage.py importar_postulantes convocatoria.csv` precarga
+  nombres/cédula/estatura/sede sin foto (columnas: `nombres,apellidos,cedula,estatura_cm,sede`).
+  Cada postulante completa su propio registro después con la foto, en el puesto de registro,
+  con la misma cédula — `POST /api/postulantes/` detecta la precarga y la completa en vez de
+  rechazarla como cédula duplicada.
+- Object storage: `USE_S3=True` en `.env` activa `django-storages` (S3Boto3) para las fotos —
+  sin credenciales de un bucket real, sigue en disco local (`USE_S3=False` por defecto). No
+  probado contra un bucket real todavía, solo cableado según el patrón estándar de
+  DigitalOcean Spaces/Hetzner Object Storage (ya decidido en este documento).
+- Múltiples puestos de registro simultáneos: no necesitó cambios — Postgres central + Django ya
+  soporta escrituras concurrentes desde varias sedes (ver "Escala" arriba).
+
 **Implementado (2026-09-06)**: en vez de `Silent-Face-Anti-Spoofing` original (PyTorch), se usa
 `MiniFASNetV2` exportado a ONNX (Apache 2.0, `yakhyo/face-anti-spoofing`) corriendo con
 `cv2.dnn.readNetFromONNX` — mismo patrón que YuNet/SFace, cero dependencias nuevas (nada de
@@ -258,6 +274,77 @@ el registro (ahí el postulante no puede estar suplantando a nadie más que a s�
 - [Microsoft Strengthens Ban on Police Use of Azure AI for Facial Recognition - ID Tech](https://idtechwire.com/microsoft-strengthens-ban-on-police-use-of-azure-ai-for-facial-recognition/)
 - [Cloud VPS Cost Comparison 2026: Hetzner vs Vultr vs DigitalOcean](https://apicalculators.com/blog/cloud-vps-cost-comparison-2026)
 - [DigitalOcean Managed PostgreSQL: Pricing, Features & When to Use It in 2026](https://infratally.com/articles/digitalocean-managed-postgres-deep-dive.html)
+
+## Toma de datos y de fotografía — mejoras (2026-09-13)
+
+- **Datos nuevos del postulante**: `fecha_nacimiento`, `telefono`, `correo`, `genero`.
+  Nulos a nivel de modelo (compatibles con la precarga por CSV, que no los trae),
+  pero obligatorios en la API al registrar o completar un postulante.
+- **Validación de cédula ecuatoriana**: algoritmo oficial del INEC (módulo 10) en
+  `asistencia/validators.py`, enganchado al campo del modelo — corre automáticamente
+  en cualquier alta/edición vía la API o el admin. La carga masiva por CSV
+  (`importar_postulantes`) sigue sin validarlo: son datos ya oficiales de la
+  convocatoria, no un dato que tipea un postulante.
+- **Múltiples fotos por postulante**: nuevo modelo `FotoPostulante` (ángulos
+  adicionales, ej. perfil, con/sin lentes) — `POST /api/postulantes/<id>/fotos/`.
+  El matching 1:N ya sumaba una lista plana de (id, embedding); solo se le agregaron
+  estas filas, sin tocar la función de comparación.
+- **Umbrales de encuadre configurables**: los que antes eran constantes fijas en
+  `facial.py` (`UMBRAL_SCORE_REGISTRO`, etc.) ahora se leen de `settings`/`.env`
+  (`ASISTENCIA_*`) — se pueden recalibrar con fotos reales sin tocar código.
+- **Detección de lentes/gorra/rostro cubierto — NO implementada todavía, a propósito**:
+  se evaluó, pero cualquier heurística sin un modelo entrenado (ej. mirar el color de
+  la región de los ojos) tendría una tasa de falsos negativos no medida — el mismo
+  riesgo que ya se descartó para anti-spoofing ("un falso positivo es inaceptable en
+  un examen de policía, no es una feature especulativa"). Requiere el mismo tipo de
+  investigación de modelo+licencia que se hizo para `Silent-Face-Anti-Spoofing`
+  (ver sección de arriba) antes de integrarlo — tarea aparte, no una línea de más.
+
+## Cuenta propia del postulante (2026-09-13)
+
+Aclaración de alcance: el registro público (`/registro` en el frontend, `/api/postulantes/`
+en el backend) **ya era público desde el principio** — nunca dependió del admin de Django,
+que es solo la vista interna del agente. Lo que faltaba era que el postulante pudiera volver
+después a revisar/corregir sus datos antes del día de la prueba:
+
+- El registro ahora exige una **contraseña** (junto con foto y el resto de datos) y crea una
+  cuenta (`User` de Django, `username` = cédula) ligada al postulante (`Postulante.usuario`).
+  Reutiliza toda la infraestructura JWT que ya existía para agentes (`/api/token/`) — no se
+  agregó un sistema de auth paralelo.
+- **`GET/PATCH /api/mi-postulante/`**: el postulante logueado ve y corrige sus propios datos.
+  `cedula` y `foto` quedan de solo lectura ahí — cambiar la foto implica rehacer el pipeline
+  facial completo, y la cédula es la identidad misma; ninguna de las dos se pidió, no se
+  agregaron todavía.
+- **Corrección de seguridad necesaria**: como ahora un login válido puede ser de un postulante
+  o de un agente, `ListaAsistenciasView` (dashboard) y `ForzarAsistenciaView` (override manual)
+  pasaron de `IsAuthenticated` a `IsAdminUser` (`is_staff`) — antes, cualquier postulante
+  logueado podía haber entrado al dashboard o forzado asistencias ajenas.
+- **Pendiente, no bloqueante**: el formulario de registro del frontend (Angular) todavía no
+  manda `password` ni los 4 campos agregados antes (`fecha_nacimiento`, `telefono`, `correo`,
+  `genero`) — hoy el registro por la UI fallaría con 400. Falta actualizar
+  `frontend/src/app/features/registro/`.
+
+## Aclaración de alcance: sedes (2026-09-13)
+
+El cliente aclaró que **asignar postulantes a una sede no es responsabilidad de este
+sistema** — eso lo hace la Policía Nacional en su propia logística, no algo que el
+postulante elige ni algo que este sistema calcula. Cambios:
+
+- `Postulante.sede` pasó a ser opcional (`blank=True, null=True`) — ya no es "dato que
+  falta completar" como foto/teléfono/correo, es un dato que simplemente puede no
+  aplicar si nadie lo asignó todavía.
+- El formulario público de registro (`/registro`) **ya no pide sede** — el postulante
+  no la sabe ni la elige.
+- Sin cambios en la carga masiva por CSV (`importar_postulantes`): sigue siendo columna
+  obligatoria ahí, porque ahí es la Policía la que la trae ya asignada.
+- Sin cambios en verificación (`/api/verificar/`) ni en el override manual: ahí `sede`
+  la pone el puesto/kiosco donde ocurre la verificación, no el postulante — sigue
+  siendo obligatoria en esos dos endpoints.
+
+Además, en el mismo pedido: **captura de foto automática** — la cámara ya se activaba
+sola al entrar a la pantalla; ahora también dispara la foto sola a los 3 segundos
+(mostrando el aviso de "quítate lentes/gorra" durante la cuenta regresiva), con un
+botón "Capturar ahora" como salida manual. Ver `shared/camera-capture/`.
 
 ## Próximos pasos sugeridos
 

@@ -26,7 +26,12 @@ export class AsistenciaService {
     );
   }
 
-  listar(): Promise<FilaAsistencia[]> {
-    return firstValueFrom(this.http.get<FilaAsistencia[]>(`${API_BASE_URL}/asistencias/`));
+  async listar(): Promise<FilaAsistencia[]> {
+    // El listado está paginado (miles de postulantes) — el dashboard solo pide la
+    // primera página, la más reciente, que es lo único que importa en un panel en vivo.
+    const pagina = await firstValueFrom(
+      this.http.get<{ results: FilaAsistencia[] }>(`${API_BASE_URL}/asistencias/`)
+    );
+    return pagina.results;
   }
 }

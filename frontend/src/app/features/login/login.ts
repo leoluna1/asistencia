@@ -6,6 +6,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { AuthService } from '../../core/auth.service';
+import { PostulantesService } from '../../core/postulantes.service';
 
 @Component({
   selector: 'app-login',
@@ -22,6 +23,7 @@ export class Login {
 
   constructor(
     private auth: AuthService,
+    private postulantes: PostulantesService,
     private router: Router
   ) {}
 
@@ -30,7 +32,14 @@ export class Login {
     this.error.set(null);
     try {
       await this.auth.login(this.username, this.password);
-      this.router.navigate(['/dashboard']);
+      // /dashboard es solo de agentes: si esta cuenta tiene un postulante propio,
+      // la mandamos a su autoservicio en vez de un dashboard que le va a dar 403.
+      try {
+        await this.postulantes.miPostulante();
+        this.router.navigate(['/mi-postulante']);
+      } catch {
+        this.router.navigate(['/dashboard']);
+      }
     } catch {
       this.error.set('Usuario o contraseña incorrectos.');
     } finally {

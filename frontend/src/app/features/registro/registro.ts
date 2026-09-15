@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
 import { CameraCapture } from '../../shared/camera-capture/camera-capture';
 import { PostulantesService } from '../../core/postulantes.service';
 import { primerMensajeDeError } from '../../core/errores';
@@ -17,6 +18,7 @@ import { primerMensajeDeError } from '../../core/errores';
     MatCardModule,
     MatFormFieldModule,
     MatInputModule,
+    MatSelectModule,
     CameraCapture
   ],
   templateUrl: './registro.html',
@@ -27,7 +29,16 @@ export class Registro {
   apellidos = '';
   cedula = '';
   estatura_cm: number | null = null;
-  sede = '';
+  fecha_nacimiento = '';
+  telefono = '';
+  correo = '';
+  genero = '';
+  password = '';
+
+  // 'datos' primero, sin tocar la cámara — recién en 'foto' se llama a
+  // getUserMedia (dentro de <app-camera-capture>), para no pedir permiso de
+  // cámara mientras la persona todavía está llenando el formulario.
+  readonly paso = signal<'datos' | 'foto'>('datos');
 
   readonly foto = signal<Blob | null>(null);
   readonly fotoPreview = signal<string | null>(null);
@@ -36,6 +47,24 @@ export class Registro {
   readonly exito = signal(false);
 
   constructor(private postulantes: PostulantesService) {}
+
+  get datosCompletos(): boolean {
+    return !!(
+      this.nombres &&
+      this.apellidos &&
+      this.cedula &&
+      this.estatura_cm &&
+      this.fecha_nacimiento &&
+      this.telefono &&
+      this.correo &&
+      this.genero &&
+      this.password
+    );
+  }
+
+  continuarAFoto(): void {
+    if (this.datosCompletos) this.paso.set('foto');
+  }
 
   onFotoCapturada(foto: Blob): void {
     this.foto.set(foto);
@@ -49,14 +78,7 @@ export class Registro {
   }
 
   get formCompleto(): boolean {
-    return !!(
-      this.nombres &&
-      this.apellidos &&
-      this.cedula &&
-      this.estatura_cm &&
-      this.sede &&
-      this.foto()
-    );
+    return this.datosCompletos && !!this.foto();
   }
 
   async registrar(): Promise<void> {
@@ -70,14 +92,20 @@ export class Registro {
         apellidos: this.apellidos,
         cedula: this.cedula,
         estatura_cm: this.estatura_cm!,
-        sede: this.sede,
-        foto: this.foto()!
+        fecha_nacimiento: this.fecha_nacimiento,
+        telefono: this.telefono,
+        correo: this.correo,
+        genero: this.genero,
+        foto: this.foto()!,
+        password: this.password
       });
       this.exito.set(true);
-      this.nombres = this.apellidos = this.cedula = this.sede = '';
+      this.nombres = this.apellidos = this.cedula = '';
+      this.fecha_nacimiento = this.telefono = this.correo = this.genero = this.password = '';
       this.estatura_cm = null;
       this.foto.set(null);
       this.fotoPreview.set(null);
+      this.paso.set('datos');
     } catch (e: any) {
       this.error.set(primerMensajeDeError(e?.error) || 'No se pudo registrar al postulante.');
     } finally {

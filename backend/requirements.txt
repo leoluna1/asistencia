@@ -6,3 +6,4 @@ Pillow
 opencv-python
 django-cors-headers
 djangorestframework-simplejwt
+django-storages  # solo se activa con USE_S3=True (ver settings.py); no se importa si no
