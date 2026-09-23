@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './core/auth.guard';
+import { adminGuard, authGuard } from './core/auth.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'registro', pathMatch: 'full' },
@@ -17,7 +17,7 @@ export const routes: Routes = [
   },
   {
     path: 'dashboard',
-    canActivate: [authGuard],
+    canActivate: [adminGuard],
     loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard)
   },
   {

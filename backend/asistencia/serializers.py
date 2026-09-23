@@ -1,6 +1,25 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import Asistencia, FotoPostulante, Postulante
+
+
+class TokenConRolSerializer(TokenObtainPairSerializer):
+    """Igual al token estándar de SimpleJWT, pero agrega `is_staff` al payload.
+
+    El frontend lo necesita para distinguir agente de postulante sin una
+    llamada extra a la API: ambos roles comparten el mismo login
+    (`/api/token/`), y el dashboard debe ser solo para agentes (ver
+    `ListaAsistenciasView`/`ForzarAsistenciaView`, que ya exigen `IsAdminUser`
+    del lado del backend — esto solo expone el mismo dato al frontend para que
+    la UI pueda bloquear la navegación en vez de mostrar una pantalla vacía).
+    """
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token["is_staff"] = user.is_staff
+        return token
 
 
 class PostulanteSerializer(serializers.ModelSerializer):

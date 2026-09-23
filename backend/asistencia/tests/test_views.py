@@ -11,6 +11,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import AccessToken
 
 from asistencia.facial import get_embedding
 from asistencia.models import Asistencia, Postulante
@@ -456,3 +457,35 @@ class LoginDePostulanteTest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertIn("access", response.data)
+
+
+class TokenConRolTest(APITestCase):
+    """El frontend usa el mismo login para agentes y postulantes (ver
+    LoginDePostulanteTest) — necesita saber cuál es cuál para no dejar
+    navegar al dashboard a un postulante (ListaAsistenciasView/
+    ForzarAsistenciaView ya lo rechazan con 403, pero sin esto la pantalla
+    quedaba accesible y vacía en vez de bloqueada)."""
+
+    def test_token_de_postulante_trae_is_staff_false(self):
+        datos = {
+            "nombres": "Juan", "apellidos": "Pérez", "cedula": "1710034065",
+            "estatura_cm": 175, "fecha_nacimiento": "1995-05-20",
+            "telefono": "0991234567", "correo": "juan@example.com", "genero": "M",
+            "sede": "Quito", "foto": _foto("rostro_real.jpg"), "password": "clave-segura-123",
+        }
+        self.client.post("/api/postulantes/", datos, format="multipart")
+
+        response = self.client.post(
+            "/api/token/", {"username": "1710034065", "password": "clave-segura-123"}
+        )
+        access = AccessToken(response.data["access"])
+        self.assertFalse(access["is_staff"])
+
+    def test_token_de_agente_trae_is_staff_true(self):
+        User.objects.create_user("agente1", password="clave-agente-123", is_staff=True)
+
+        response = self.client.post(
+            "/api/token/", {"username": "agente1", "password": "clave-agente-123"}
+        )
+        access = AccessToken(response.data["access"])
+        self.assertTrue(access["is_staff"])

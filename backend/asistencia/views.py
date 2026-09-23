@@ -8,6 +8,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .facial import (
     UMBRAL_COINCIDENCIA,
@@ -24,6 +25,7 @@ from .serializers import (
     FotoPostulanteSerializer,
     MiPostulanteSerializer,
     PostulanteSerializer,
+    TokenConRolSerializer,
 )
 
 
@@ -306,3 +308,10 @@ class ForzarAsistenciaView(APIView):
                 "verificado_en": asistencia.verificado_en,
             }
         )
+
+
+class TokenConRolView(TokenObtainPairView):
+    """Reemplaza a TokenObtainPairView en /api/token/ — mismo endpoint, mismo
+    contrato, solo agrega `is_staff` al JWT (ver TokenConRolSerializer)."""
+
+    serializer_class = TokenConRolSerializer
