@@ -1,36 +1,59 @@
-<div class="pantalla">
-  <mat-card appearance="outlined" class="tarjeta">
-    <h2>Verificación de asistencia</h2>
+<div class="verificacion">
+  <header class="encabezado">
+    <h1>Verificación de asistencia</h1>
+    @if (sede && (enSesion() || resultado() || agotado())) {
+      <span class="sede-activa">{{ sede }}</span>
+    }
+  </header>
 
-    @if (!enSesion() && !resultado()) {
-      <mat-form-field appearance="outline">
-        <mat-label>Sede</mat-label>
-        <input matInput [(ngModel)]="sede" (keyup.enter)="iniciar()" />
-      </mat-form-field>
-      <button mat-flat-button color="primary" [disabled]="!sede" (click)="iniciar()">
-        Iniciar verificación
-      </button>
+  <div class="cuerpo">
+    @if (!enSesion() && !resultado() && !agotado()) {
+      <div class="paso-inicial">
+        <p class="instruccion">Ingresá la sede para comenzar la verificación.</p>
+        <mat-form-field appearance="outline">
+          <mat-label>Sede</mat-label>
+          <input matInput [(ngModel)]="sede" (keyup.enter)="iniciar()" />
+        </mat-form-field>
+        <button mat-flat-button color="primary" [disabled]="!sede" (click)="iniciar()">
+          Iniciar verificación
+        </button>
+      </div>
     }
 
     @if (enSesion()) {
-      <app-camera-capture (capturado)="onFotoCapturada($event)" />
-      <p>Intento {{ intentos() + 1 }} de 3…</p>
+      <div class="paso-camara">
+        <app-camera-capture (capturado)="onFotoCapturada($event)" />
+        <span class="chip-intento">Intento {{ intentos() + 1 }} de 3</span>
+      </div>
     }
 
     @if (resultado()?.verificado) {
-      <p class="ok">
-        ✔ {{ resultado()?.postulante?.nombres }} {{ resultado()?.postulante?.apellidos }} —
-        asistencia {{ resultado()?.ya_registrado ? 'ya estaba registrada' : 'registrada' }}.
-      </p>
-      <button mat-flat-button color="primary" (click)="resultado.set(null)">
-        Verificar otro postulante
-      </button>
+      <div class="paso-resultado exito">
+        <mat-icon class="icono">check_circle</mat-icon>
+        <h2>{{ resultado()?.postulante?.nombres }} {{ resultado()?.postulante?.apellidos }}</h2>
+        <p>
+          {{
+            resultado()?.ya_registrado
+              ? 'La asistencia ya estaba registrada.'
+              : 'Asistencia registrada correctamente.'
+          }}
+        </p>
+        <button mat-flat-button color="primary" (click)="resultado.set(null)">
+          Verificar otro postulante
+        </button>
+      </div>
     }
 
     @if (agotado()) {
-      <p class="error">No se pudo reconocer al postulante después de 3 intentos.</p>
-      <button mat-flat-button (click)="reintentarDesdeElInicio()">Reintentar</button>
-      <a mat-flat-button color="accent" routerLink="/dashboard">Llamar a un agente</a>
+      <div class="paso-resultado agotado">
+        <mat-icon class="icono">error_outline</mat-icon>
+        <h2>No se pudo verificar</h2>
+        <p>No se pudo reconocer al postulante después de 3 intentos.</p>
+        <div class="acciones">
+          <button mat-stroked-button (click)="reintentarDesdeElInicio()">Reintentar</button>
+          <a mat-flat-button color="accent" routerLink="/dashboard">Llamar a un agente</a>
+        </div>
+      </div>
     }
-  </mat-card>
+  </div>
 </div>

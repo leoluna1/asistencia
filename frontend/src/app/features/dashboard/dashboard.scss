@@ -1,48 +1,108 @@
-.dashboard {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 24px 16px;
+.encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 32px;
+  background: var(--pne-navy);
+  color: #fff;
+  flex-wrap: wrap;
 
-  .encabezado {
+  .titulo-grupo {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+
+    h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .contador {
+      font-size: 0.85rem;
+      color: var(--pne-dorado);
+      font-weight: 600;
+    }
+  }
+
+  .usuario-grupo {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 16px;
 
-    h2 {
-      flex: 1;
-      margin: 0;
-    }
-  }
-
-  .tarjeta-manual {
-    margin-bottom: 24px;
-    padding: 16px;
-
-    .fila-manual {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
-      flex-wrap: wrap;
+    .usuario {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.75);
     }
 
-    .error {
-      color: #b00020;
-    }
-
-    .ok {
-      color: #2e7d32;
+    .btn-salir {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.35);
     }
   }
+}
 
-  .tabla {
-    width: 100%;
+.contenido {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.tarjeta-manual {
+  margin-bottom: 24px;
+  padding: 20px 24px;
+  background: var(--pne-superficie);
+  border: 1px solid var(--pne-borde);
+  border-top: 3px solid var(--pne-dorado);
+  border-radius: 4px;
+
+  .titulo-seccion {
+    margin: 0 0 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--pne-tinta);
   }
 
-  .miniatura {
-    width: 40px;
-    height: 40px;
-    object-fit: cover;
-    border-radius: 50%;
+  .fila-manual {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
+
+  .error {
+    color: var(--pne-error);
+    margin: 8px 0 0;
+  }
+
+  .ok {
+    color: var(--pne-exito);
+    margin: 8px 0 0;
+  }
+}
+
+.tarjeta-tabla {
+  background: var(--pne-superficie);
+  border: 1px solid var(--pne-borde);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.tabla {
+  width: 100%;
+}
+
+.miniatura {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.vacio {
+  padding: 24px;
+  text-align: center;
+  color: var(--pne-tinta);
+  margin: 0;
 }

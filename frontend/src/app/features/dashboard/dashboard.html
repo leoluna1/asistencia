@@ -1,78 +1,87 @@
-<div class="dashboard">
-  <div class="encabezado">
-    <h2>Asistencia en vivo</h2>
-    <span>{{ auth.username() }}</span>
-    <button mat-button (click)="auth.logout()">Cerrar sesión</button>
-  </div>
-
-  <mat-card class="tarjeta-manual">
-    <h3>Forzar asistencia (agente)</h3>
-    <div class="fila-manual">
-      <mat-form-field appearance="outline">
-        <mat-label>Cédula</mat-label>
-        <input matInput [(ngModel)]="cedulaManual" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Sede</mat-label>
-        <input matInput [(ngModel)]="sedeManual" />
-      </mat-form-field>
-      <button
-        mat-flat-button
-        color="accent"
-        [disabled]="!cedulaManual || !sedeManual || enviandoManual()"
-        (click)="forzarManual()"
-      >
-        Forzar
-      </button>
+<div class="tablero-agente">
+  <header class="encabezado">
+    <div class="titulo-grupo">
+      <h1>Asistencia en vivo</h1>
+      <span class="contador">{{ filas().length }} registradas</span>
     </div>
-    @if (errorManual()) {
-      <p class="error">{{ errorManual() }}</p>
-    }
-    @if (okManual()) {
-      <p class="ok">{{ okManual() }}</p>
-    }
-  </mat-card>
+    <div class="usuario-grupo">
+      <span class="usuario">{{ auth.username() }}</span>
+      <button mat-stroked-button class="btn-salir" (click)="auth.logout()">Cerrar sesión</button>
+    </div>
+  </header>
 
-  <table mat-table [dataSource]="filas()" class="tabla">
-    <ng-container matColumnDef="foto">
-      <th mat-header-cell *matHeaderCellDef></th>
-      <td mat-cell *matCellDef="let fila">
-        <img class="miniatura" [src]="fila.postulante_foto" alt="" />
-      </td>
-    </ng-container>
+  <div class="contenido">
+    <div class="tarjeta-manual">
+      <h2 class="titulo-seccion">Forzar asistencia (agente)</h2>
+      <div class="fila-manual">
+        <mat-form-field appearance="outline">
+          <mat-label>Cédula</mat-label>
+          <input matInput [(ngModel)]="cedulaManual" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Sede</mat-label>
+          <input matInput [(ngModel)]="sedeManual" />
+        </mat-form-field>
+        <button
+          mat-flat-button
+          color="accent"
+          [disabled]="!cedulaManual || !sedeManual || enviandoManual()"
+          (click)="forzarManual()"
+        >
+          Forzar
+        </button>
+      </div>
+      @if (errorManual()) {
+        <p class="error">{{ errorManual() }}</p>
+      }
+      @if (okManual()) {
+        <p class="ok">{{ okManual() }}</p>
+      }
+    </div>
 
-    <ng-container matColumnDef="nombre">
-      <th mat-header-cell *matHeaderCellDef>Nombre</th>
-      <td mat-cell *matCellDef="let fila">
-        {{ fila.postulante_nombres }} {{ fila.postulante_apellidos }}
-      </td>
-    </ng-container>
+    <div class="tarjeta-tabla">
+      <table mat-table [dataSource]="filas()" class="tabla">
+        <ng-container matColumnDef="foto">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let fila">
+            <img class="miniatura" [src]="fila.postulante_foto" alt="" />
+          </td>
+        </ng-container>
 
-    <ng-container matColumnDef="cedula">
-      <th mat-header-cell *matHeaderCellDef>Cédula</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.postulante_cedula }}</td>
-    </ng-container>
+        <ng-container matColumnDef="nombre">
+          <th mat-header-cell *matHeaderCellDef>Nombre</th>
+          <td mat-cell *matCellDef="let fila">
+            {{ fila.postulante_nombres }} {{ fila.postulante_apellidos }}
+          </td>
+        </ng-container>
 
-    <ng-container matColumnDef="sede">
-      <th mat-header-cell *matHeaderCellDef>Sede</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.sede }}</td>
-    </ng-container>
+        <ng-container matColumnDef="cedula">
+          <th mat-header-cell *matHeaderCellDef>Cédula</th>
+          <td mat-cell *matCellDef="let fila" class="mono">{{ fila.postulante_cedula }}</td>
+        </ng-container>
 
-    <ng-container matColumnDef="metodo">
-      <th mat-header-cell *matHeaderCellDef>Método</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.metodo }}</td>
-    </ng-container>
+        <ng-container matColumnDef="sede">
+          <th mat-header-cell *matHeaderCellDef>Sede</th>
+          <td mat-cell *matCellDef="let fila">{{ fila.sede }}</td>
+        </ng-container>
 
-    <ng-container matColumnDef="hora">
-      <th mat-header-cell *matHeaderCellDef>Hora</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.verificado_en | date: 'short' }}</td>
-    </ng-container>
+        <ng-container matColumnDef="metodo">
+          <th mat-header-cell *matHeaderCellDef>Método</th>
+          <td mat-cell *matCellDef="let fila">{{ fila.metodo }}</td>
+        </ng-container>
 
-    <tr mat-header-row *matHeaderRowDef="columnas"></tr>
-    <tr mat-row *matRowDef="let row; columns: columnas"></tr>
-  </table>
+        <ng-container matColumnDef="hora">
+          <th mat-header-cell *matHeaderCellDef>Hora</th>
+          <td mat-cell *matCellDef="let fila">{{ fila.verificado_en | date: 'short' }}</td>
+        </ng-container>
 
-  @if (filas().length === 0) {
-    <p>Todavía no hay asistencias registradas.</p>
-  }
+        <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+        <tr mat-row *matRowDef="let row; columns: columnas"></tr>
+      </table>
+
+      @if (filas().length === 0) {
+        <p class="vacio">Todavía no hay asistencias registradas.</p>
+      }
+    </div>
+  </div>
 </div>

@@ -2,8 +2,8 @@ import { Component, OnDestroy, ViewChild, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { CameraCapture } from '../../shared/camera-capture/camera-capture';
 import { AsistenciaService } from '../../core/asistencia.service';
@@ -19,8 +19,8 @@ const MAX_INTENTOS = 3; // decisión confirmada: reintento automático, luego ag
     FormsModule,
     RouterLink,
     MatButtonModule,
-    MatCardModule,
     MatFormFieldModule,
+    MatIconModule,
     MatInputModule,
     CameraCapture
   ],
