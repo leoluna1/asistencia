@@ -92,8 +92,8 @@
     gap: 8px;
     padding: var(--pne-espacio-lg);
     background: var(--pne-superficie);
-    border: 1px solid var(--pne-borde);
-    border-radius: 12px;
+    border: 1px solid var(--pne-borde-acento);
+    border-radius: var(--pne-radio);
     color: var(--pne-error);
     text-align: center;
 

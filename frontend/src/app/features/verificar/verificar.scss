@@ -2,8 +2,8 @@
   max-width: 640px;
   margin: 32px auto;
   background: var(--pne-superficie);
-  border: 1px solid var(--pne-borde);
-  border-radius: 4px;
+  border: 1px solid var(--pne-borde-acento);
+  border-radius: var(--pne-radio);
   box-shadow: var(--pne-sombra-tarjeta);
   overflow: hidden;
 
@@ -25,8 +25,9 @@
 
   h1 {
     margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
   }
 
   .sede-activa {

@@ -1,25 +1,40 @@
+// Referencia: CLEAR (clearme.com) — titular grande y con aire, sin encerrarlo
+// en una tarjeta angosta tipo formulario. Esta es la única pantalla que no
+// usa .tarjeta a propósito: no es un formulario, no debería verse como uno.
+.pantalla-inicio {
+  padding-top: 80px;
+  padding-bottom: 80px;
+}
+
 .inicio {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  max-width: 560px;
+  gap: 20px;
+  max-width: 640px;
   text-align: center;
 
   .acento {
-    width: 40px;
-    height: 3px;
+    width: 56px;
+    height: 4px;
     background: var(--pne-dorado);
   }
 
   h1 {
     margin: 0;
-    font-size: 1.6rem;
-    font-weight: 600;
+    font-size: 2.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
     color: var(--pne-tinta);
   }
 
   .descripcion {
     margin: 0;
+    max-width: 480px;
+    font-size: 1.05rem;
+    line-height: 1.6;
     color: var(--pne-tinta-suave);
-    line-height: 1.5;
   }
 
   .acciones {

@@ -10,8 +10,8 @@
   max-width: 960px;
   margin: 32px auto;
   background: var(--pne-superficie);
-  border: 1px solid var(--pne-borde);
-  border-radius: 4px;
+  border: 1px solid var(--pne-borde-acento);
+  border-radius: var(--pne-radio);
   box-shadow: var(--pne-sombra-tarjeta);
   overflow: hidden;
 
