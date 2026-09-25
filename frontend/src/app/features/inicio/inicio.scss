@@ -1,0 +1,32 @@
+.inicio {
+  align-items: center;
+  max-width: 560px;
+  text-align: center;
+
+  .acento {
+    width: 40px;
+    height: 3px;
+    background: var(--pne-dorado);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--pne-tinta);
+  }
+
+  .descripcion {
+    margin: 0;
+    color: var(--pne-tinta-suave);
+    line-height: 1.5;
+  }
+
+  .acciones {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 8px;
+  }
+}

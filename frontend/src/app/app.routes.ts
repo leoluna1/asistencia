@@ -2,7 +2,11 @@ import { Routes } from '@angular/router';
 import { adminGuard, authGuard } from './core/auth.guard';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'registro', pathMatch: 'full' },
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./features/inicio/inicio').then((m) => m.Inicio)
+  },
   {
     path: 'verificar',
     loadComponent: () => import('./features/verificar/verificar').then((m) => m.Verificar)
