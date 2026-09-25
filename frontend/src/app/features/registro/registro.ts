@@ -4,9 +4,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { CameraCapture } from '../../shared/camera-capture/camera-capture';
+import { InlineMessage } from '../../shared/inline-message/inline-message';
 import { PostulantesService } from '../../core/postulantes.service';
 import { primerMensajeDeError } from '../../core/errores';
 import { cedulaEcuatorianaValida, soloDigitos } from '../../core/validators';
@@ -19,10 +22,13 @@ import { cedulaEcuatorianaValida, soloDigitos } from '../../core/validators';
     MatButtonModule,
     MatCardModule,
     MatDatepickerModule,
+    MatIconModule,
     MatFormFieldModule,
     MatInputModule,
+    MatProgressSpinnerModule,
     MatSelectModule,
-    CameraCapture
+    CameraCapture,
+    InlineMessage
   ],
   templateUrl: './registro.html',
   styleUrl: './registro.scss'

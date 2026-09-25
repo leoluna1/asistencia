@@ -23,7 +23,13 @@
     @if (enSesion()) {
       <div class="paso-camara">
         <app-camera-capture (capturado)="onFotoCapturada($event)" />
-        <span class="chip-intento">Intento {{ intentos() + 1 }} de 3</span>
+        <span class="chip-intento" [class.verificando]="verificando()">
+          @if (verificando()) {
+            Verificando…
+          } @else {
+            Intento {{ intentos() + 1 }} de 3
+          }
+        </span>
       </div>
     }
 

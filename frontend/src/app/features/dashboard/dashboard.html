@@ -3,6 +3,9 @@
     <div class="titulo-grupo">
       <h1>Asistencia en vivo</h1>
       <span class="contador">{{ filas().length }} registradas</span>
+      @if (actualizando()) {
+        <mat-progress-spinner class="spinner-poll" diameter="14" mode="indeterminate" />
+      }
     </div>
     <div class="usuario-grupo">
       <span class="usuario">{{ auth.username() }}</span>
@@ -32,10 +35,10 @@
         </button>
       </div>
       @if (errorManual()) {
-        <p class="error">{{ errorManual() }}</p>
+        <app-mensaje tipo="error">{{ errorManual() }}</app-mensaje>
       }
       @if (okManual()) {
-        <p class="ok">{{ okManual() }}</p>
+        <app-mensaje tipo="ok">{{ okManual() }}</app-mensaje>
       }
     </div>
 
@@ -80,7 +83,10 @@
       </table>
 
       @if (filas().length === 0) {
-        <p class="vacio">Todavía no hay asistencias registradas.</p>
+        <div class="vacio">
+          <mat-icon>inbox</mat-icon>
+          <p>Todavía no hay asistencias registradas.</p>
+        </div>
       }
     </div>
   </div>

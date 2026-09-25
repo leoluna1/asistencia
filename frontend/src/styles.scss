@@ -14,11 +14,24 @@
   --pne-navy-alto: #1f3a5c;
   --pne-dorado: #b98a2e;
   --pne-tinta: #1b2a3d;
+  --pne-tinta-suave: #55647a;
   --pne-fondo: #eef1f5;
   --pne-superficie: #ffffff;
   --pne-borde: #dde3ea;
   --pne-exito: #2e7d32;
   --pne-error: #b00020;
+  --pne-aviso: #b9781f;
+
+  // Escala de espaciado — evita paddings/márgenes puestos "a ojo" por pantalla.
+  --pne-espacio-xs: 4px;
+  --pne-espacio-sm: 8px;
+  --pne-espacio-md: 16px;
+  --pne-espacio-lg: 24px;
+  --pne-espacio-xl: 32px;
+
+  // Elevación sutil para tarjetas: profundidad discreta, no sombras dramáticas
+  // (tono institucional serio, no una app de producto).
+  --pne-sombra-tarjeta: 0 1px 2px rgba(15, 23, 32, 0.06), 0 1px 6px rgba(15, 23, 32, 0.07);
 }
 
 html {
@@ -57,6 +70,14 @@ body {
   height: 100%;
 }
 /* You can add global styles to this file, and also import other style files */
+
+// Foco visible y consistente en toda la app (accesibilidad) — antes dependía
+// solo del default de Material, que no se aplica al chrome hecho a mano
+// (nav, panel de mi-postulante, etc.).
+:focus-visible {
+  outline: 2px solid var(--pne-dorado);
+  outline-offset: 2px;
+}
 
 // Números de identificación (cédula): fuente monoespaciada — no es decoración,
 // es para que los 10 dígitos se lean/alineen como el número que son.
@@ -109,13 +130,14 @@ body {
 .tarjeta {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 32px;
+  gap: var(--pne-espacio-md);
+  padding: var(--pne-espacio-xl);
   width: 100%;
   max-width: 480px;
   background: var(--pne-superficie);
   border: 1px solid var(--pne-borde);
   border-radius: 4px;
+  box-shadow: var(--pne-sombra-tarjeta);
 
   h2 {
     margin: 0;
@@ -127,4 +149,11 @@ body {
     color: var(--pne-error);
     margin: 0;
   }
+}
+
+// Botón con estado de carga: reemplaza el texto por un spinner chico mientras
+// dura la request, sin cambiar el tamaño del botón ni el layout alrededor.
+button[mat-flat-button] mat-progress-spinner,
+button[mat-stroked-button] mat-progress-spinner {
+  margin: 0 auto;
 }

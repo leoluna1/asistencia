@@ -4,16 +4,26 @@ import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { AuthService } from '../../core/auth.service';
 import { PostulantesService } from '../../core/postulantes.service';
 import { Postulante } from '../../core/models';
 import { primerMensajeDeError } from '../../core/errores';
+import { InlineMessage } from '../../shared/inline-message/inline-message';
 
 @Component({
   selector: 'app-mi-postulante',
   standalone: true,
-  imports: [FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule],
+  imports: [
+    FormsModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    MatSelectModule,
+    InlineMessage
+  ],
   templateUrl: './mi-postulante.html',
   styleUrl: './mi-postulante.scss'
 })

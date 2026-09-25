@@ -4,6 +4,7 @@
   background: var(--pne-superficie);
   border: 1px solid var(--pne-borde);
   border-radius: 4px;
+  box-shadow: var(--pne-sombra-tarjeta);
   overflow: hidden;
 
   @media (max-width: 768px) {
@@ -76,6 +77,12 @@
     border-radius: 999px;
     font-size: 0.82rem;
     color: var(--pne-tinta);
+    transition: border-color 0.2s ease, color 0.2s ease;
+
+    &.verificando {
+      border-color: var(--pne-dorado);
+      color: var(--pne-dorado);
+    }
   }
 }
 

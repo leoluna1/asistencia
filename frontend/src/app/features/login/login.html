@@ -13,11 +13,15 @@
     </mat-form-field>
 
     @if (error()) {
-      <p class="error">{{ error() }}</p>
+      <app-mensaje tipo="error">{{ error() }}</app-mensaje>
     }
 
     <button mat-flat-button color="primary" [disabled]="cargando()" (click)="ingresar()">
-      Ingresar
+      @if (cargando()) {
+        <mat-progress-spinner diameter="18" mode="indeterminate" />
+      } @else {
+        Ingresar
+      }
     </button>
   </mat-card>
 </div>

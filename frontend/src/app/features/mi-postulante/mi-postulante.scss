@@ -12,6 +12,7 @@
   background: var(--pne-superficie);
   border: 1px solid var(--pne-borde);
   border-radius: 4px;
+  box-shadow: var(--pne-sombra-tarjeta);
   overflow: hidden;
 
   @media (max-width: 768px) {
@@ -131,15 +132,7 @@
   gap: 8px;
   margin-top: 24px;
 
-  .error {
-    color: var(--pne-error);
-    margin: 0;
-    align-self: stretch;
-  }
-
-  .ok {
-    color: var(--pne-exito);
-    margin: 0;
+  app-mensaje {
     align-self: stretch;
   }
 }

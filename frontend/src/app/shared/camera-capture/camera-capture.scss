@@ -36,11 +36,11 @@
     transition: border-color 0.25s ease;
 
     &.ajustar {
-      border-color: #e0a537;
+      border-color: var(--pne-aviso);
     }
 
     &.exito {
-      border-color: #2e7d32;
+      border-color: var(--pne-exito);
     }
   }
 
@@ -80,12 +80,31 @@
 
   .ayuda {
     margin: 0;
-    color: #555;
+    color: var(--pne-tinta-suave);
     font-size: 0.9rem;
     text-align: center;
   }
 
   .error {
-    color: #b00020;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: var(--pne-espacio-lg);
+    background: var(--pne-superficie);
+    border: 1px solid var(--pne-borde);
+    border-radius: 12px;
+    color: var(--pne-error);
+    text-align: center;
+
+    mat-icon {
+      font-size: 32px;
+      width: 32px;
+      height: 32px;
+    }
+
+    p {
+      margin: 0;
+    }
   }
 }

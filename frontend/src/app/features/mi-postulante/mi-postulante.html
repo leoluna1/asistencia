@@ -65,10 +65,10 @@
 
       <div class="pie">
         @if (error()) {
-          <p class="error">{{ error() }}</p>
+          <app-mensaje tipo="error">{{ error() }}</app-mensaje>
         }
         @if (exito()) {
-          <p class="ok">Datos actualizados correctamente.</p>
+          <app-mensaje tipo="ok">Datos actualizados correctamente.</app-mensaje>
         }
         <button
           mat-flat-button
@@ -76,7 +76,11 @@
           [disabled]="!datosCompletos || guardando()"
           (click)="guardar()"
         >
-          Guardar cambios
+          @if (guardando()) {
+            <mat-progress-spinner diameter="18" mode="indeterminate" />
+          } @else {
+            Guardar cambios
+          }
         </button>
       </div>
     </section>

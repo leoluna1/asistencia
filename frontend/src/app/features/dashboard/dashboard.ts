@@ -3,12 +3,15 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTableModule } from '@angular/material/table';
 import { AsistenciaService } from '../../core/asistencia.service';
 import { AuthService } from '../../core/auth.service';
 import { primerMensajeDeError } from '../../core/errores';
 import { FilaAsistencia } from '../../core/models';
+import { InlineMessage } from '../../shared/inline-message/inline-message';
 
 const INTERVALO_POLLING_MS = 4000;
 
@@ -20,14 +23,18 @@ const INTERVALO_POLLING_MS = 4000;
     FormsModule,
     MatButtonModule,
     MatFormFieldModule,
+    MatIconModule,
     MatInputModule,
-    MatTableModule
+    MatProgressSpinnerModule,
+    MatTableModule,
+    InlineMessage
   ],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss'
 })
 export class Dashboard implements OnInit, OnDestroy {
   readonly filas = signal<FilaAsistencia[]>([]);
+  readonly actualizando = signal(false);
   readonly columnas = [
     'foto',
     'nombre',
@@ -60,11 +67,14 @@ export class Dashboard implements OnInit, OnDestroy {
   }
 
   private async actualizar(): Promise<void> {
+    this.actualizando.set(true);
     try {
       this.filas.set(await this.asistencia.listar());
     } catch {
       // ponytail: si falla un polling, se reintenta solo en el próximo tick — no
       // hace falta mostrar un error por un fallo aislado de red.
+    } finally {
+      this.actualizando.set(false);
     }
   }
 

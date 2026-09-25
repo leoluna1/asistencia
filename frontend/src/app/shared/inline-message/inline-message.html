@@ -1,0 +1,4 @@
+<p class="mensaje" [class.ok]="tipo === 'ok'" [class.error]="tipo === 'error'">
+  <mat-icon>{{ icono }}</mat-icon>
+  <span><ng-content></ng-content></span>
+</p>

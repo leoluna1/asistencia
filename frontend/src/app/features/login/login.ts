@@ -5,13 +5,23 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../core/auth.service';
 import { PostulantesService } from '../../core/postulantes.service';
+import { InlineMessage } from '../../shared/inline-message/inline-message';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule],
+  imports: [
+    FormsModule,
+    MatButtonModule,
+    MatCardModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    InlineMessage
+  ],
   templateUrl: './login.html',
   styleUrl: './login.scss'
 })
