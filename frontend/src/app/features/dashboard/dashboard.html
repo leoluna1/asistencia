@@ -14,6 +14,102 @@
   </header>
 
   <div class="contenido">
+    <div class="tarjeta-filtros">
+      <div class="fila-filtros">
+        <mat-form-field appearance="outline">
+          <mat-label>Buscar por nombre o cédula</mat-label>
+          <input matInput [value]="q" (input)="onBusquedaInput($any($event.target).value)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Desde</mat-label>
+          <input matInput type="datetime-local" [(ngModel)]="desde" (change)="aplicarFiltro()" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Hasta</mat-label>
+          <input matInput type="datetime-local" [(ngModel)]="hasta" (change)="aplicarFiltro()" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Método</mat-label>
+          <mat-select [(ngModel)]="metodo" (selectionChange)="aplicarFiltro()">
+            <mat-option value="">Todos</mat-option>
+            <mat-option value="AUTO">Automático</mat-option>
+            <mat-option value="MANUAL">Manual</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+      <div class="fila-exportar">
+        <button mat-stroked-button [disabled]="!!exportando()" (click)="exportar('csv')">
+          @if (exportando() === 'csv') {
+            <mat-progress-spinner diameter="16" mode="indeterminate" />
+          } @else {
+            <mat-icon>download</mat-icon>
+          }
+          Exportar CSV
+        </button>
+        <button mat-stroked-button [disabled]="!!exportando()" (click)="exportar('pdf')">
+          @if (exportando() === 'pdf') {
+            <mat-progress-spinner diameter="16" mode="indeterminate" />
+          } @else {
+            <mat-icon>picture_as_pdf</mat-icon>
+          }
+          Exportar PDF
+        </button>
+      </div>
+      @if (errorExportar()) {
+        <app-mensaje tipo="error">{{ errorExportar() }}</app-mensaje>
+      }
+    </div>
+
+    <div class="fila-graficos">
+      <div class="tarjeta-grafico">
+        <h2 class="titulo-seccion">Por sede</h2>
+        @if (porSede().length > 0) {
+          <ngx-charts-bar-vertical
+            [view]="vistaGrafico"
+            [results]="porSede()"
+            [scheme]="esquemaColores"
+            [xAxis]="true"
+            [yAxis]="true"
+            [tooltipDisabled]="true"
+          />
+        } @else {
+          <p class="sin-datos">Sin datos para este filtro.</p>
+        }
+      </div>
+      <div class="tarjeta-grafico">
+        <h2 class="titulo-seccion">Verificaciones por hora</h2>
+        @if (porHora()[0]?.series?.length) {
+          <ngx-charts-line-chart
+            [view]="vistaGrafico"
+            [results]="porHora()"
+            [scheme]="esquemaColores"
+            [xAxis]="true"
+            [yAxis]="true"
+            [tooltipDisabled]="true"
+          />
+        } @else {
+          <p class="sin-datos">Sin datos para este filtro.</p>
+        }
+      </div>
+      <div class="tarjeta-grafico">
+        <h2 class="titulo-seccion">Automático vs. manual</h2>
+        @if (porMetodo().length > 0) {
+          <ngx-charts-pie-chart
+            [view]="vistaGrafico"
+            [results]="porMetodo()"
+            [scheme]="esquemaColores"
+            [labels]="true"
+            [tooltipDisabled]="true"
+          />
+        } @else {
+          <p class="sin-datos">Sin datos para este filtro.</p>
+        }
+      </div>
+      @if (errorResumen()) {
+        <app-mensaje tipo="error">{{ errorResumen() }}</app-mensaje>
+      }
+    </div>
+
     <div class="tarjeta-manual">
       <h2 class="titulo-seccion">Forzar asistencia (agente)</h2>
       <div class="fila-manual">

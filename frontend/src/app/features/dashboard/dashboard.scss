@@ -49,9 +49,86 @@
 }
 
 .contenido {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+}
+
+.tarjeta-filtros {
+  margin-bottom: 24px;
+  padding: 20px 24px;
+  background: var(--pne-superficie);
+  border: 1px solid var(--pne-borde-acento);
+  border-radius: var(--pne-radio);
+  box-shadow: var(--pne-sombra-tarjeta);
+
+  .fila-filtros {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+
+    mat-form-field:first-child {
+      flex: 1 1 240px;
+    }
+  }
+
+  .fila-exportar {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+
+    button mat-progress-spinner {
+      margin-right: 8px;
+    }
+  }
+
+  app-mensaje {
+    margin-top: 8px;
+  }
+}
+
+.fila-graficos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+
+  @media (max-width: 860px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tarjeta-grafico {
+  padding: 16px 20px;
+  background: var(--pne-superficie);
+  border: 1px solid var(--pne-borde-acento);
+  border-radius: var(--pne-radio);
+  box-shadow: var(--pne-sombra-tarjeta);
+
+  .titulo-seccion {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--pne-tinta);
+  }
+
+  ngx-charts-bar-vertical,
+  ngx-charts-line-chart,
+  ngx-charts-pie-chart {
+    display: block;
+    height: 220px;
+  }
+
+  .sin-datos {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 220px;
+    margin: 0;
+    color: var(--pne-tinta-suave);
+    font-size: 0.85rem;
+  }
 }
 
 .tarjeta-manual {

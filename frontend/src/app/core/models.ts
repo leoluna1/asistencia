@@ -42,3 +42,18 @@ export interface FilaAsistencia {
   confianza: number | null;
   verificado_en: string;
 }
+
+/** Filtros combinables del dashboard — se mandan igual a la lista, al resumen
+ * (gráficos) y a la exportación, para que las 3 vistas sean consistentes. */
+export interface FiltrosAsistencia {
+  q?: string;
+  desde?: string;
+  hasta?: string;
+  metodo?: 'AUTO' | 'MANUAL' | '';
+}
+
+export interface ResumenAsistencias {
+  por_sede: { sede: string; total: number }[];
+  por_hora: { hora: string; total: number }[];
+  por_metodo: { metodo: string; total: number }[];
+}
