@@ -1,10 +1,11 @@
 import cv2
 import numpy as np
 from django.contrib.auth.models import User
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -83,19 +84,37 @@ class RegistroPostulanteView(generics.CreateAPIView):
         )
         if precargado:
             return self._completar_precarga(precargado, request)
-        return super().create(request, *args, **kwargs)
+        try:
+            with transaction.atomic():
+                return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            # Dos registros casi simultáneos con la misma cédula nueva (ej. doble
+            # envío por conexión inestable en el kiosco) pueden pasar ambos la
+            # validación del serializer (el UniqueValidator consulta la BD antes de
+            # que ninguno haga commit) — el segundo INSERT choca acá. Se traduce al
+            # mismo 400 que ya devuelve una cédula duplicada detectada a tiempo, en
+            # vez de un 500 sin capturar.
+            raise ValidationError({"cedula": "Ya existe un postulante con esta cédula."})
 
     def _completar_precarga(self, postulante, request):
-        # partial=True + instance=postulante: reusa la misma validación de la
-        # serializer (incluida la de cédula) para completar TODOS los campos que la
-        # precarga por CSV no traía (foto, fecha de nacimiento, teléfono, correo,
-        # género, contraseña), no solo la foto.
-        serializer = self.get_serializer(postulante, data=request.data, partial=True)
+        # instance=postulante, SIN partial: el frontend siempre manda el registro
+        # completo (nombres/apellidos/estatura_cm ya vienen del CSV, pero
+        # foto/fecha_nacimiento/telefono/correo/genero/password todavía no) — con
+        # partial=True, DRF salta la validación de los campos required=True que
+        # falten en el request en vez de rechazarlos, dejando completar la
+        # precarga sin foto (KeyError sin capturar) o con datos nulos guardados.
+        serializer = self.get_serializer(postulante, data=request.data)
         serializer.is_valid(raise_exception=True)
         embedding = _procesar_foto_de_registro(request.FILES["foto"])
-        usuario = User.objects.create_user(
-            username=postulante.cedula, password=serializer.validated_data["password"]
-        )
+        # La precarga puede ya tener cuenta propia si un agente le limpió la foto
+        # después de completada (ej. mala foto, pide resubirla) — reusar esa
+        # cuenta en vez de intentar crear una con el mismo username (cédula) dos
+        # veces, que choca contra el unique constraint de User.
+        usuario = postulante.usuario
+        if usuario is None:
+            usuario = User.objects.create_user(
+                username=postulante.cedula, password=serializer.validated_data["password"]
+            )
         serializer.save(embedding=embedding, usuario=usuario)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -147,12 +166,21 @@ class AgregarFotoPostulanteView(generics.CreateAPIView):
     FotoPostulante). El postulante ya tiene su foto principal; esto es opcional,
     para cuando 2-3 fotos mejoran el matching 1:N (perfil, con/sin lentes, etc.)."""
 
-    # Público (ver nota en RegistroPostulanteView: evita 401 por un token viejo).
-    authentication_classes = []
+    # Requiere login (a diferencia del registro/verificación, que son públicos a
+    # propósito): sin esto, cualquiera podía sumar su propio rostro al pool de
+    # matching de OTRO postulante (postulante_id es un entero adivinable en la URL)
+    # y hacerse pasar por él en /api/verificar/ — ver el chequeo de dueño abajo.
+    permission_classes = [IsAuthenticated]
     serializer_class = FotoPostulanteSerializer
 
     def perform_create(self, serializer):
         postulante = get_object_or_404(Postulante, pk=self.kwargs["postulante_id"])
+        # Solo el propio postulante (autoservicio, mismo criterio que
+        # MiPostulanteView) o un agente (is_staff) pueden sumarle una foto —
+        # nunca un tercero autenticado como otro postulante.
+        es_el_propio_postulante = postulante.usuario_id == self.request.user.id
+        if not (self.request.user.is_staff or es_el_propio_postulante):
+            raise PermissionDenied("No puedes agregar fotos a otro postulante.")
         embedding = _procesar_foto_de_registro(self.request.FILES["foto"])
         serializer.save(postulante=postulante, embedding=embedding)
 

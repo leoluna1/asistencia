@@ -7,6 +7,7 @@ Columnas esperadas: nombres,apellidos,cedula,estatura_cm,sede
 """
 import csv
 
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from asistencia.models import Postulante
@@ -39,13 +40,27 @@ class Command(BaseCommand):
                     omitidos += 1
                     continue
 
-                Postulante.objects.create(
+                postulante = Postulante(
                     nombres=fila["nombres"].strip(),
                     apellidos=fila["apellidos"].strip(),
                     cedula=cedula,
                     estatura_cm=int(fila["estatura_cm"]),
                     sede=fila["sede"].strip(),
                 )
+                try:
+                    # .create() no corre los validators del modelo (ej. dígito
+                    # verificador de la cédula, ver validators.py) — full_clean()
+                    # sí, para que un typo en la lista oficial de convocatoria no
+                    # quede persistido en silencio con datos que la API pública
+                    # habría rechazado.
+                    postulante.full_clean()
+                except ValidationError as error:
+                    detalle = "; ".join(f"{campo}: {', '.join(mensajes)}" for campo, mensajes in error.message_dict.items())
+                    self.stderr.write(f"Fila {numero_fila}: datos inválidos ({detalle}), omitida.")
+                    omitidos += 1
+                    continue
+
+                postulante.save()
                 creados += 1
 
         self.stdout.write(self.style.SUCCESS(f"Creados: {creados}. Omitidos: {omitidos}."))

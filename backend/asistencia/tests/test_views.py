@@ -5,6 +5,7 @@ para su procedencia y licencia.
 """
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -114,25 +115,103 @@ class RegistroPostulanteViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("telefono", response.data)
 
+    def test_completar_precarga_rechaza_si_falta_la_foto(self):
+        Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito",
+        )
+        datos = self._datos()
+        del datos["foto"]
+        response = self.client.post(self.url, datos, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("foto", response.data)
+        self.assertEqual(Postulante.objects.get(cedula="1710034065").usuario, None)
+
+    def test_completar_precarga_rechaza_si_falta_un_campo_nuevo_obligatorio(self):
+        Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito",
+        )
+        datos = self._datos()
+        del datos["correo"]
+        response = self.client.post(self.url, datos, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("correo", response.data)
+
+    def test_completar_precarga_reusa_la_cuenta_si_ya_tenia_una(self):
+        # Un agente pudo haber limpiado la foto de un postulante ya completado
+        # (ej. mala foto) sin borrar su cuenta — completar de nuevo no debe
+        # intentar crear un User con el mismo username (cédula) otra vez.
+        usuario_previo = User.objects.create_user(username="1710034065", password="vieja-123")
+        Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito", usuario=usuario_previo,
+        )
+        response = self.client.post(self.url, self._datos(), format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        postulante = Postulante.objects.get(cedula="1710034065")
+        self.assertEqual(postulante.usuario_id, usuario_previo.id)
+        self.assertEqual(User.objects.filter(username="1710034065").count(), 1)
+
+    def test_dos_registros_simultaneos_con_misma_cedula_da_400_no_500(self):
+        # Simula la ventana de carrera: el UniqueValidator del serializer solo
+        # consulta la BD (sin lock), así que dos requests casi simultáneos con una
+        # cédula nueva pueden pasar validación antes de que cualquiera haga commit.
+        # Se desactiva el validador para forzar ese mismo estado y confirmar que el
+        # segundo INSERT, que sí choca contra la restricción unique real, se
+        # traduce a un 400 en vez de un 500 sin capturar.
+        self.client.post(self.url, self._datos(), format="multipart")
+        with patch("rest_framework.validators.UniqueValidator.__call__", return_value=None):
+            response = self.client.post(
+                self.url, self._datos(foto=_foto("rostro_real.jpg")), format="multipart"
+            )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cedula", response.data)
+        self.assertEqual(Postulante.objects.filter(cedula="1710034065").count(), 1)
+
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP)
 class AgregarFotoPostulanteViewTest(APITestCase):
     def setUp(self):
+        self.usuario = User.objects.create_user(username="1710034065", password="clave-segura-123")
         self.postulante = Postulante.objects.create(
             nombres="Juan", apellidos="Pérez", cedula="1710034065",
             estatura_cm=175, sede="Quito",
             foto=_foto("rostro_real.jpg"),
             embedding=get_embedding(cv2_leer("rostro_real.jpg")),
+            usuario=self.usuario,
         )
         self.url = f"/api/postulantes/{self.postulante.id}/fotos/"
 
-    def test_agrega_foto_adicional_con_su_embedding(self):
+    def test_requiere_autenticacion(self):
+        response = self.client.post(self.url, {"foto": _foto("rostro_real.jpg")}, format="multipart")
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+        self.assertEqual(self.postulante.fotos_adicionales.count(), 0)
+
+    def test_no_puede_agregar_foto_a_otro_postulante(self):
+        # Antes de este fix, cualquiera podía sumar su propio rostro al pool de
+        # matching de OTRO postulante y hacerse pasar por él en /api/verificar/.
+        otro_usuario = User.objects.create_user(username="0100000001", password="clave-otra-123")
+        self.client.force_authenticate(otro_usuario)
+        response = self.client.post(self.url, {"foto": _foto("rostro_real.jpg")}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(self.postulante.fotos_adicionales.count(), 0)
+
+    def test_el_propio_postulante_agrega_su_foto_adicional(self):
+        self.client.force_authenticate(self.usuario)
         response = self.client.post(self.url, {"foto": _foto("rostro_real.jpg")}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(self.postulante.fotos_adicionales.count(), 1)
         self.assertEqual(len(self.postulante.fotos_adicionales.get().embedding), 128)
 
+    def test_un_agente_agrega_foto_a_cualquier_postulante(self):
+        agente = User.objects.create_user(username="agente1", password="clave-agente-123", is_staff=True)
+        self.client.force_authenticate(agente)
+        response = self.client.post(self.url, {"foto": _foto("rostro_real.jpg")}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
     def test_rechaza_foto_sin_rostro(self):
+        self.client.force_authenticate(self.usuario)
         foto_sin_rostro = SimpleUploadedFile(
             "sin_rostro.jpg", _imagen_lisa_jpeg(), content_type="image/jpeg"
         )
@@ -141,6 +220,7 @@ class AgregarFotoPostulanteViewTest(APITestCase):
         self.assertEqual(self.postulante.fotos_adicionales.count(), 0)
 
     def test_404_si_el_postulante_no_existe(self):
+        self.client.force_authenticate(self.usuario)
         response = self.client.post(
             "/api/postulantes/99999/fotos/", {"foto": _foto("rostro_real.jpg")}, format="multipart"
         )
