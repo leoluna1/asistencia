@@ -7,3 +7,7 @@ opencv-python
 django-cors-headers
 djangorestframework-simplejwt
 django-storages  # solo se activa con USE_S3=True (ver settings.py); no se importa si no
+weasyprint  # export PDF del dashboard con identidad navy/dorado (HTML/CSS -> PDF)
+# macOS + Homebrew: weasyprint necesita `brew install cairo pango gdk-pixbuf` y
+# DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib en el entorno para encontrar esas
+# libs (no hace falta en Linux/producción, ahí las resuelve el linker normal).

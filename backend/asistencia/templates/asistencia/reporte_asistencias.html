@@ -1,0 +1,50 @@
+{% load tz %}<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4 landscape; margin: 2cm; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1b2a3d; margin: 0; }
+  header { background: #16283F; color: #fff; padding: 16px 24px; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; font-size: 11px; color: rgba(255, 255, 255, 0.75); }
+  .acento { height: 4px; background: #B98A2E; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+  th { text-align: left; padding: 8px 10px; background: #eef1f5; color: #1b2a3d; border-bottom: 2px solid #B98A2E; }
+  td { padding: 6px 10px; border-bottom: 1px solid #dde3ea; }
+  tr:nth-child(even) td { background: #f7f8fa; }
+  .mono { font-family: 'Courier New', monospace; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Asistencia — Policía Nacional</h1>
+    <p>Generado el {% now "d/m/Y H:i" %} — {{ total }} registro{{ total|pluralize }}</p>
+  </header>
+  <div class="acento"></div>
+  <table>
+    <thead>
+      <tr>
+        <th>Cédula</th>
+        <th>Nombres</th>
+        <th>Apellidos</th>
+        <th>Sede</th>
+        <th>Método</th>
+        <th>Hora</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for asistencia in asistencias %}
+      <tr>
+        <td class="mono">{{ asistencia.postulante.cedula }}</td>
+        <td>{{ asistencia.postulante.nombres }}</td>
+        <td>{{ asistencia.postulante.apellidos }}</td>
+        <td>{{ asistencia.sede }}</td>
+        <td>{{ asistencia.get_metodo_display }}</td>
+        <td>{{ asistencia.verificado_en|date:"Y-m-d H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

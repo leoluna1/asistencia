@@ -1,9 +1,17 @@
+import csv
+import datetime
+
 import cv2
 import numpy as np
 from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.db.models.functions import TruncHour
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.template.loader import render_to_string
+from django.utils.dateparse import parse_date, parse_datetime
+from django.utils.timezone import get_current_timezone, is_naive, make_aware
 from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
@@ -279,16 +287,173 @@ class VerificarAsistenciaView(APIView):
         )
 
 
+def _parsear_fecha(valor, *, limite_de_dia):
+    """Acepta tanto un datetime ISO 8601 completo como una fecha sola (typical de
+    un date picker, ej. "2026-09-24") — en ese caso se interpreta como el
+    principio o el final de ese día según `limite_de_dia` ("inicio"/"fin").
+    Devuelve None si no se puede interpretar (el llamante decide ignorar el
+    filtro en vez de romper la request con un valor mal formado).
+
+    Ojo: se prueba parse_date() ANTES que parse_datetime() a propósito —
+    parse_datetime("2026-09-24") no devuelve None como cabría esperar de un
+    valor sin hora, sino esa fecha a medianoche, lo que rompería silenciosamente
+    el límite "fin" (quedaría en medianoche en vez de fin de día). parse_date()
+    es estricto con el formato YYYY-MM-DD y sí devuelve None ante un datetime
+    completo, así que sirve para distinguir los dos casos de forma confiable."""
+    fecha = parse_date(valor)
+    if fecha is not None:
+        hora = datetime.time.min if limite_de_dia == "inicio" else datetime.time.max
+        momento = datetime.datetime.combine(fecha, hora)
+    else:
+        momento = parse_datetime(valor)
+        if momento is None:
+            return None
+    if is_naive(momento):
+        momento = make_aware(momento, get_current_timezone())
+    return momento
+
+
+def _filtrar_asistencias(queryset, request):
+    """Filtros combinables que comparten los 3 endpoints de asistencias (lista,
+    resumen y exportación) — un valor mal formado o desconocido se ignora en vez
+    de romper la request; el dashboard no debería caerse por un query param raro."""
+    q = request.query_params.get("q")
+    if q:
+        queryset = queryset.filter(
+            Q(postulante__nombres__icontains=q)
+            | Q(postulante__apellidos__icontains=q)
+            | Q(postulante__cedula__icontains=q)
+        )
+
+    desde = request.query_params.get("desde")
+    if desde:
+        momento = _parsear_fecha(desde, limite_de_dia="inicio")
+        if momento:
+            queryset = queryset.filter(verificado_en__gte=momento)
+
+    hasta = request.query_params.get("hasta")
+    if hasta:
+        momento = _parsear_fecha(hasta, limite_de_dia="fin")
+        if momento:
+            queryset = queryset.filter(verificado_en__lte=momento)
+
+    metodo = request.query_params.get("metodo")
+    if metodo in Asistencia.Metodo.values:
+        queryset = queryset.filter(metodo=metodo)
+
+    return queryset
+
+
 class ListaAsistenciasView(generics.ListAPIView):
-    """Lista en vivo del dashboard: las asistencias más recientes primero (MVP, sin
-    filtros ni exportación — decisión confirmada). El cliente hace polling cada 3-5s."""
+    """Lista en vivo del dashboard: las asistencias más recientes primero, con
+    filtros opcionales (q/desde/hasta/metodo) para buscar/acotar sin perder el
+    polling en vivo. El cliente hace polling cada 3-5s."""
 
     # IsAdminUser (is_staff), no solo IsAuthenticated: desde que los postulantes
     # también tienen cuenta propia (ver Postulante.usuario), un login válido ya no
     # alcanza para distinguir agente de postulante — is_staff sí.
     permission_classes = [IsAdminUser]
     serializer_class = AsistenciaSerializer
-    queryset = Asistencia.objects.select_related("postulante").order_by("-verificado_en")
+
+    def get_queryset(self):
+        queryset = Asistencia.objects.select_related("postulante").order_by("-verificado_en")
+        return _filtrar_asistencias(queryset, self.request)
+
+
+class ResumenAsistenciasView(APIView):
+    """Agregados para los gráficos del dashboard (por sede, por hora, por método),
+    calculados en la base de datos — nunca trae todas las filas a Python. Mismos
+    filtros que ListaAsistenciasView, para que gráficos/tabla/exportación
+    muestren siempre el mismo recorte de datos."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        queryset = _filtrar_asistencias(Asistencia.objects.all(), request)
+
+        por_sede = list(
+            queryset.values("sede").annotate(total=Count("id")).order_by("-total")
+        )
+        por_hora = list(
+            queryset.annotate(hora=TruncHour("verificado_en"))
+            .values("hora")
+            .annotate(total=Count("id"))
+            .order_by("hora")
+        )
+        por_metodo = list(
+            queryset.values("metodo").annotate(total=Count("id")).order_by("metodo")
+        )
+
+        return Response({"por_sede": por_sede, "por_hora": por_hora, "por_metodo": por_metodo})
+
+
+_CARACTERES_FORMULA_CSV = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _celda_csv_segura(valor):
+    """Antepone una comilla simple si el valor empieza con un caracter que
+    Excel/Sheets interpreta como inicio de fórmula (CWE-1236) — nombres/apellidos
+    vienen del autoregistro del postulante (texto libre), no son un dato
+    confiable para escribir tal cual en un CSV que un agente puede abrir en
+    Excel."""
+    valor = str(valor)
+    if valor.startswith(_CARACTERES_FORMULA_CSV):
+        return "'" + valor
+    return valor
+
+
+class ExportarAsistenciasView(APIView):
+    """Exporta TODAS las filas que matchean los filtros (no solo la página actual
+    del dashboard) en CSV o PDF — mismos filtros que ListaAsistenciasView."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        formato = request.query_params.get("formato")
+        if formato not in ("csv", "pdf"):
+            raise ValidationError({"formato": "Debe ser 'csv' o 'pdf'."})
+
+        queryset = _filtrar_asistencias(
+            Asistencia.objects.select_related("postulante").order_by("-verificado_en"),
+            request,
+        )
+
+        if formato == "csv":
+            return self._csv(queryset)
+        return self._pdf(queryset)
+
+    def _csv(self, queryset):
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="asistencias.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Cédula", "Nombres", "Apellidos", "Sede", "Método", "Hora"])
+        for asistencia in queryset:
+            writer.writerow(
+                [
+                    _celda_csv_segura(asistencia.postulante.cedula),
+                    _celda_csv_segura(asistencia.postulante.nombres),
+                    _celda_csv_segura(asistencia.postulante.apellidos),
+                    _celda_csv_segura(asistencia.sede),
+                    asistencia.get_metodo_display(),
+                    asistencia.verificado_en.strftime("%Y-%m-%d %H:%M"),
+                ]
+            )
+        return response
+
+    def _pdf(self, queryset):
+        # Import local (no en el tope del archivo): weasyprint solo hace falta
+        # para este único endpoint, no vale la pena pagar su costo de import en
+        # cada arranque del server por una exportación que se usa ocasionalmente.
+        from weasyprint import HTML
+
+        html = render_to_string(
+            "asistencia/reporte_asistencias.html",
+            {"asistencias": queryset, "total": queryset.count()},
+        )
+        pdf = HTML(string=html).write_pdf()
+        response = HttpResponse(pdf, content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="asistencias.pdf"'
+        return response
 
 
 class ForzarAsistenciaView(APIView):

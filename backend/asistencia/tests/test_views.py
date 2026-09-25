@@ -3,6 +3,7 @@
 Usa las mismas fixtures que test_facial.py — ver el docstring de ese archivo
 para su procedencia y licencia.
 """
+import datetime
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -10,6 +11,7 @@ from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
@@ -467,6 +469,282 @@ class ListaAsistenciasViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("count", response.data)
         self.assertIn("results", response.data)
+
+    def _crear_asistencia(self, cedula, nombres, apellidos, sede, metodo, verificado_en=None):
+        postulante = Postulante.objects.create(
+            nombres=nombres, apellidos=apellidos, cedula=cedula,
+            estatura_cm=170, sede=sede, foto=_foto("rostro_real.jpg", f"{cedula}.jpg"),
+        )
+        asistencia = Asistencia.objects.create(postulante=postulante, sede=sede, metodo=metodo)
+        if verificado_en is not None:
+            Asistencia.objects.filter(pk=asistencia.pk).update(verificado_en=verificado_en)
+            asistencia.refresh_from_db()
+        return asistencia
+
+    def test_filtra_por_nombre_o_cedula(self):
+        self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self._crear_asistencia(
+            "2222222222", "Luis", "Diaz", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"q": "Lopez"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        nombres = [fila["postulante_nombres"] for fila in response.data["results"]]
+        self.assertEqual(nombres, ["Ana"])
+
+        response = self.client.get(self.url, {"q": "2222222222"})
+        cedulas = [fila["postulante_cedula"] for fila in response.data["results"]]
+        self.assertEqual(cedulas, ["2222222222"])
+
+    def test_filtra_por_rango_de_fecha(self):
+        antigua = self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO,
+            verificado_en=timezone.now() - datetime.timedelta(days=5),
+        )
+        reciente = self._crear_asistencia(
+            "2222222222", "Luis", "Diaz", "Quito", Asistencia.Metodo.AUTOMATICO,
+        )
+        self.client.force_authenticate(self.agente)
+
+        desde = (timezone.now() - datetime.timedelta(days=1)).isoformat()
+        response = self.client.get(self.url, {"desde": desde})
+        ids = [fila["id"] for fila in response.data["results"]]
+        self.assertEqual(ids, [reciente.id])
+
+        hasta = (timezone.now() - datetime.timedelta(days=1)).isoformat()
+        response = self.client.get(self.url, {"hasta": hasta})
+        ids = [fila["id"] for fila in response.data["results"]]
+        self.assertEqual(ids, [antigua.id])
+
+    def test_filtra_por_rango_de_fecha_solo_dia(self):
+        # Un date picker típico manda solo "2026-09-24" (sin hora) — debe
+        # interpretarse como el día completo, no fallar silenciosamente.
+        hoy = self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self.client.force_authenticate(self.agente)
+
+        # fecha LOCAL (America/Guayaquil), no la fecha UTC de timezone.now().date() —
+        # son distintas cerca de la medianoche, y es la fecha local la que un date
+        # picker manda.
+        hoy_str = timezone.localtime(timezone.now()).date().isoformat()
+        response = self.client.get(self.url, {"desde": hoy_str, "hasta": hoy_str})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [fila["id"] for fila in response.data["results"]]
+        self.assertEqual(ids, [hoy.id])
+
+    def test_filtra_por_metodo(self):
+        self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self._crear_asistencia(
+            "2222222222", "Luis", "Diaz", "Quito", Asistencia.Metodo.MANUAL
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"metodo": "MANUAL"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        metodos = [fila["metodo"] for fila in response.data["results"]]
+        self.assertEqual(metodos, ["MANUAL"])
+
+    def test_metodo_invalido_no_rompe_ni_filtra(self):
+        self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"metodo": "LO-QUE-SEA"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 1)
+
+    def test_fecha_invalida_no_rompe_ni_filtra(self):
+        self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"desde": "no-es-una-fecha"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 1)
+
+    def test_combina_varios_filtros(self):
+        self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self._crear_asistencia(
+            "2222222222", "Ana", "Diaz", "Quito", Asistencia.Metodo.MANUAL
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"q": "Ana", "metodo": "MANUAL"})
+        cedulas = [fila["postulante_cedula"] for fila in response.data["results"]]
+        self.assertEqual(cedulas, ["2222222222"])
+
+
+class ResumenAsistenciasViewTest(APITestCase):
+    url = "/api/asistencias/resumen/"
+
+    def setUp(self):
+        self.agente = User.objects.create_user(
+            username="agente1", password="clave-segura-123", is_staff=True
+        )
+
+    def _crear_asistencia(self, cedula, sede, metodo, verificado_en=None):
+        postulante = Postulante.objects.create(
+            nombres="Test", apellidos="Test", cedula=cedula,
+            estatura_cm=170, sede=sede, foto=_foto("rostro_real.jpg", f"{cedula}.jpg"),
+        )
+        asistencia = Asistencia.objects.create(postulante=postulante, sede=sede, metodo=metodo)
+        if verificado_en is not None:
+            Asistencia.objects.filter(pk=asistencia.pk).update(verificado_en=verificado_en)
+        return asistencia
+
+    def test_requiere_autenticacion(self):
+        response = self.client.get(self.url)
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_postulante_no_puede_ver_el_resumen(self):
+        usuario = User.objects.create_user(username="9999999999", password="clave-segura-123")
+        self.client.force_authenticate(usuario)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_agrega_por_sede_y_metodo(self):
+        self._crear_asistencia("1111111111", "Quito", Asistencia.Metodo.AUTOMATICO)
+        self._crear_asistencia("2222222222", "Quito", Asistencia.Metodo.MANUAL)
+        self._crear_asistencia("3333333333", "Guayaquil", Asistencia.Metodo.AUTOMATICO)
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        por_sede = {fila["sede"]: fila["total"] for fila in response.data["por_sede"]}
+        self.assertEqual(por_sede, {"Quito": 2, "Guayaquil": 1})
+
+        por_metodo = {fila["metodo"]: fila["total"] for fila in response.data["por_metodo"]}
+        self.assertEqual(por_metodo, {"AUTO": 2, "MANUAL": 1})
+
+    def test_agrupa_por_hora(self):
+        base = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self._crear_asistencia("1111111111", "Quito", Asistencia.Metodo.AUTOMATICO, verificado_en=base)
+        self._crear_asistencia(
+            "2222222222", "Quito", Asistencia.Metodo.AUTOMATICO,
+            verificado_en=base + datetime.timedelta(minutes=10),
+        )
+        self._crear_asistencia(
+            "3333333333", "Quito", Asistencia.Metodo.AUTOMATICO,
+            verificado_en=base + datetime.timedelta(hours=1),
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url)
+        totales = sorted(fila["total"] for fila in response.data["por_hora"])
+        self.assertEqual(totales, [1, 2])
+
+    def test_respeta_filtros(self):
+        self._crear_asistencia("1111111111", "Quito", Asistencia.Metodo.AUTOMATICO)
+        self._crear_asistencia("2222222222", "Quito", Asistencia.Metodo.MANUAL)
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"metodo": "MANUAL"})
+        por_metodo = {fila["metodo"]: fila["total"] for fila in response.data["por_metodo"]}
+        self.assertEqual(por_metodo, {"MANUAL": 1})
+
+    def test_vacio_no_rompe(self):
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data, {"por_sede": [], "por_hora": [], "por_metodo": []}
+        )
+
+
+@override_settings(MEDIA_ROOT=MEDIA_TMP)
+class ExportarAsistenciasViewTest(APITestCase):
+    url = "/api/asistencias/exportar/"
+
+    def setUp(self):
+        self.agente = User.objects.create_user(
+            username="agente1", password="clave-segura-123", is_staff=True
+        )
+        self.postulante = Postulante.objects.create(
+            nombres="Ana", apellidos="Lopez", cedula="1111111111",
+            estatura_cm=170, sede="Quito", foto=_foto("rostro_real.jpg", "a.jpg"),
+        )
+        self.asistencia = Asistencia.objects.create(postulante=self.postulante, sede="Quito")
+
+    def test_requiere_autenticacion(self):
+        response = self.client.get(self.url, {"formato": "csv"})
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_formato_faltante_es_400(self):
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_formato_invalido_es_400(self):
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url, {"formato": "xml"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_exporta_csv(self):
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url, {"formato": "csv"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "text/csv")
+        self.assertIn("attachment", response["Content-Disposition"])
+
+        contenido = response.content.decode("utf-8")
+        self.assertIn("1111111111", contenido)
+        self.assertIn("Ana", contenido)
+        lineas = [linea for linea in contenido.strip().split("\r\n") if linea]
+        self.assertEqual(len(lineas), 2)  # encabezado + 1 fila
+
+    def test_exporta_pdf(self):
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url, {"formato": "pdf"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_exporta_respetando_filtros(self):
+        otro = Postulante.objects.create(
+            nombres="Luis", apellidos="Diaz", cedula="2222222222",
+            estatura_cm=180, sede="Guayaquil", foto=_foto("rostro_real.jpg", "b.jpg"),
+        )
+        Asistencia.objects.create(postulante=otro, sede="Guayaquil", metodo=Asistencia.Metodo.MANUAL)
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"formato": "csv", "metodo": "MANUAL"})
+        contenido = response.content.decode("utf-8")
+        self.assertIn("2222222222", contenido)
+        self.assertNotIn("1111111111", contenido)
+
+    def test_csv_neutraliza_inyeccion_de_formulas(self):
+        # nombres/apellidos vienen del autoregistro del postulante (texto libre) —
+        # si alguien registra un nombre que empieza con =/+/-/@, Excel/Sheets lo
+        # puede interpretar como fórmula al abrir el CSV exportado (CWE-1236).
+        # Mitigación estándar: anteponer una comilla simple a esos valores.
+        maligno = Postulante.objects.create(
+            nombres="=cmd|'/c calc'!A1",
+            apellidos="Lopez",
+            cedula="3333333333",
+            estatura_cm=170,
+            sede="Quito",
+            foto=_foto("rostro_real.jpg", "c.jpg"),
+        )
+        Asistencia.objects.create(postulante=maligno, sede="Quito")
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"formato": "csv", "q": "3333333333"})
+        contenido = response.content.decode("utf-8")
+        self.assertNotIn("\n=cmd", contenido)
+        self.assertNotIn(",=cmd", contenido)
+        self.assertIn("'=cmd|'/c calc'!A1", contenido)
 
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP)

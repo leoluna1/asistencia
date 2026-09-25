@@ -2,11 +2,13 @@ from django.urls import path
 
 from .views import (
     AgregarFotoPostulanteView,
+    ExportarAsistenciasView,
     ForzarAsistenciaView,
     ListaAsistenciasView,
     MiPostulanteView,
     ProbarEncuadreView,
     RegistroPostulanteView,
+    ResumenAsistenciasView,
     VerificarAsistenciaView,
 )
 
@@ -22,4 +24,6 @@ urlpatterns = [
     path("verificar/", VerificarAsistenciaView.as_view(), name="verificar-asistencia"),
     path("asistencia/manual/", ForzarAsistenciaView.as_view(), name="forzar-asistencia"),
     path("asistencias/", ListaAsistenciasView.as_view(), name="lista-asistencias"),
+    path("asistencias/resumen/", ResumenAsistenciasView.as_view(), name="resumen-asistencias"),
+    path("asistencias/exportar/", ExportarAsistenciasView.as_view(), name="exportar-asistencias"),
 ]
