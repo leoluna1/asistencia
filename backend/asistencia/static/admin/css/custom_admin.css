@@ -86,3 +86,106 @@ button {
 div.breadcrumbs {
   border-top: 3px solid var(--accent);
 }
+
+/* ============================================================
+   Modernización de layout: el admin de Django usa border-radius:4px
+   y sin sombras en todos lados (inputs, botones, módulos, filtros,
+   paginador) — se sube a un radio más suave y se le suma sombra tipo
+   tarjeta (mismo valor que --pne-sombra-tarjeta del frontend) para que
+   no se vea plano. Todo vía selectores reales de base.css/changelists.css/
+   login.css — no se tocó ningún template más allá de base_site.html.
+   ============================================================ */
+
+:root {
+  --pne-radio-admin: 8px;
+  --pne-radio-tarjeta: 12px;
+  --pne-sombra-tarjeta: 0 1px 2px rgba(15, 23, 32, 0.06), 0 1px 6px rgba(15, 23, 32, 0.07);
+}
+
+/* Inputs, selects, botones: mismo radio en todos lados en vez del 4px
+   parcial de Django (algunos elementos lo tenían, otros no). */
+input[type='text'],
+input[type='password'],
+input[type='email'],
+input[type='url'],
+input[type='number'],
+input[type='tel'],
+textarea,
+select,
+.vTextField,
+.button,
+input[type='submit'],
+input[type='button'],
+.submit-row input,
+a.button,
+#toolbar form input,
+#toolbar #searchbar,
+#changelist .actions select,
+#changelist .actions .button {
+  border-radius: var(--pne-radio-admin) !important;
+}
+
+.button,
+input[type='submit'],
+input[type='button'],
+.submit-row input,
+a.button {
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.button:hover,
+input[type='submit']:hover,
+input[type='button']:hover {
+  transform: translateY(-1px);
+}
+
+/* Tarjetas: módulos del índice, filtros del changelist, la barra de
+   búsqueda — Django los deja como bloques planos pegados al fondo. */
+.module,
+#changelist-filter,
+#toolbar {
+  border-radius: var(--pne-radio-tarjeta);
+  box-shadow: var(--pne-sombra-tarjeta);
+  border: 1px solid var(--hairline-color);
+}
+
+#toolbar {
+  padding: 12px 16px;
+}
+
+/* Más aire entre módulos del índice (antes quedaban pegados unos a otros). */
+.app-list .module,
+.dashboard .module {
+  margin-bottom: 20px;
+}
+
+/* Fila resaltada al pasar el mouse en las tablas de listado — Django no
+   tiene ningún hover ahí por defecto, la tabla se siente estática. */
+#changelist table tbody tr:hover {
+  background-color: var(--selected-bg);
+}
+
+/* Filtro activo del changelist con acento dorado en vez del gris default. */
+#changelist-filter li.selected a {
+  border-left: 2px solid var(--accent);
+  color: var(--body-fg);
+  font-weight: 600;
+}
+
+/* App/modelo activo en el sidebar de navegación, con el mismo acento. */
+#nav-sidebar .current-app .section,
+#nav-sidebar .current-model {
+  border-left: 3px solid var(--accent);
+}
+
+/* Tarjeta del login: el 4px + sin sombra por defecto la hacía ver pegada
+   al fondo — ahora flota como el resto de las tarjetas de la app. */
+/* !important en border-radius: login.css de Django define la MISMA regla
+   (".login #container") y, por cómo login.html encadena block.super, su
+   <link> queda después del mío en el <head> — a igual especificidad, gana
+   el que carga último. box-shadow no lo toca Django, no hace falta ahí. */
+.login #container {
+  border-radius: var(--pne-radio-tarjeta) !important;
+  box-shadow: var(--pne-sombra-tarjeta);
+  border: none;
+}
