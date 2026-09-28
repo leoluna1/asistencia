@@ -1,0 +1,76 @@
+/* Tema navy/dorado del admin — mismos tokens que frontend/src/styles.scss
+   (--pne-*), para que el panel de agentes no se vea como un Django genérico.
+
+   El admin de Django expone su paleta como custom properties en :root (ver
+   site-packages/django/contrib/admin/static/admin/css/base.css) — alcanza con
+   redefinirlas, sin tocar ningún template más que base_site.html (para este
+   <link>).
+
+   Contraste verificado (WCAG AA, texto normal >= 4.5:1):
+   - Blanco sobre navy (#16283f): ~14.9:1
+   - Dorado (#b98a2e) sobre navy: ~4.78:1 — por eso el dorado SOLO se usa como
+     texto sobre navy (branding del header) o como acorde/borde, nunca como
+     texto sobre fondo claro (dorado sobre blanco da ~3.1:1, no pasa). */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap');
+
+:root,
+html[data-theme='light'] {
+  --primary: #16283f; /* pne-navy */
+  --secondary: #1f3a5c; /* pne-navy-alto */
+  --accent: #b98a2e; /* pne-dorado */
+  --primary-fg: #fff;
+
+  --body-fg: #1b2a3d; /* pne-tinta */
+  --body-bg: #eef1f5; /* pne-fondo */
+  --body-quiet-color: #55647a; /* pne-tinta-suave */
+  --body-loud-color: #16283f;
+
+  --header-color: #fff;
+  --header-branding-color: #b98a2e;
+  --header-bg: #16283f;
+  --header-link-color: #fff;
+
+  --breadcrumbs-fg: #eef1f5;
+  --breadcrumbs-link-fg: #fff;
+  --breadcrumbs-bg: #1f3a5c;
+
+  --link-fg: #16283f;
+  --link-hover-color: #1f3a5c;
+  --link-selected-fg: #1f3a5c;
+
+  --hairline-color: #dde3ea; /* pne-borde */
+  --border-color: #dde3ea;
+
+  --error-fg: #b00020; /* pne-error */
+
+  --darkened-bg: #ffffff; /* pne-superficie */
+  --selected-bg: #eef1f5;
+  --selected-row: #fbeecb; /* dorado muy claro, texto oscuro encima */
+
+  --button-fg: #fff;
+  --button-bg: #16283f;
+  --button-hover-bg: #1f3a5c;
+  --default-button-bg: #1f3a5c;
+  --default-button-hover-bg: #16283f;
+  --close-button-bg: #55647a;
+  --close-button-hover-bg: #1b2a3d;
+  --delete-button-bg: #b00020;
+  --delete-button-hover-bg: #8e001a;
+}
+
+body,
+#header,
+.module h2,
+.module caption {
+  font-family: 'Archivo', 'Segoe UI', Arial, sans-serif;
+}
+
+#branding h1 {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+div.breadcrumbs {
+  border-top: 3px solid var(--accent);
+}

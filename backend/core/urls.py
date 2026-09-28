@@ -22,6 +22,12 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from asistencia.views import TokenConRolView
 
+# Branding del admin (ver también templates/admin/base_site.html y
+# asistencia/static/admin/css/custom_admin.css para el tema navy/dorado).
+admin.site.site_header = 'Policía Nacional · Sistema de Asistencia'
+admin.site.site_title = 'Administración — Asistencia PNE'
+admin.site.index_title = 'Panel de administración'
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/token/', TokenConRolView.as_view(), name='token-obtain-pair'),

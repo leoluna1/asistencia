@@ -75,7 +75,11 @@ ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # DIRS se busca ANTES que las plantillas de cada app (APP_DIRS) — sin esto,
+        # templates/admin/base_site.html (para el tema navy/dorado del admin) nunca
+        # ganaría contra la propia admin/base_site.html de django.contrib.admin, que
+        # aparece antes en INSTALLED_APPS.
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
