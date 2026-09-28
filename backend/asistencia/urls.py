@@ -8,8 +8,10 @@ from .views import (
     MiPostulanteView,
     ProbarEncuadreView,
     RegistroPostulanteView,
+    ReenviarCodigoView,
     ResumenAsistenciasView,
     VerificarAsistenciaView,
+    VerificarCorreoView,
 )
 
 urlpatterns = [
@@ -20,6 +22,8 @@ urlpatterns = [
         name="agregar-foto-postulante",
     ),
     path("postulantes/probar-encuadre/", ProbarEncuadreView.as_view(), name="probar-encuadre"),
+    path("postulantes/verificar-correo/", VerificarCorreoView.as_view(), name="verificar-correo"),
+    path("postulantes/reenviar-codigo/", ReenviarCodigoView.as_view(), name="reenviar-codigo"),
     path("mi-postulante/", MiPostulanteView.as_view(), name="mi-postulante"),
     path("verificar/", VerificarAsistenciaView.as_view(), name="verificar-asistencia"),
     path("asistencia/manual/", ForzarAsistenciaView.as_view(), name="forzar-asistencia"),

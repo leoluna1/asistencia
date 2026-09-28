@@ -1,9 +1,11 @@
 import csv
 import datetime
+import random
 
 import cv2
 import numpy as np
 from django.contrib.auth.models import User
+from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.db.models.functions import TruncHour
@@ -11,7 +13,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.utils.dateparse import parse_date, parse_datetime
-from django.utils.timezone import get_current_timezone, is_naive, make_aware
+from django.utils.timezone import get_current_timezone, is_naive, make_aware, now
 from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
@@ -68,6 +70,26 @@ def _procesar_foto_de_registro(foto) -> list[float]:
     return calcular_embedding(imagen_bgr, rostro)
 
 
+MINUTOS_EXPIRACION_CODIGO_VERIFICACION = 15
+
+
+def _generar_y_enviar_codigo_verificacion(postulante):
+    """Genera un código de 6 dígitos y lo manda al correo del postulante (ver
+    VerificarCorreoView) — se llama solo cuando se crea la cuenta (is_active=False
+    hasta verificar), nunca al reusar una ya verificada."""
+    codigo = f"{random.randint(0, 999999):06d}"
+    postulante.codigo_verificacion = codigo
+    postulante.codigo_generado_en = now()
+    postulante.save(update_fields=["codigo_verificacion", "codigo_generado_en"])
+    send_mail(
+        "Código de verificación — Policía Nacional",
+        f"Tu código de verificación es: {codigo}\n"
+        f"Vence en {MINUTOS_EXPIRACION_CODIGO_VERIFICACION} minutos.",
+        None,  # usa DEFAULT_FROM_EMAIL
+        [postulante.correo],
+    )
+
+
 class RegistroPostulanteView(generics.CreateAPIView):
     """Alta de un postulante: guarda sus datos y el embedding facial de su foto.
 
@@ -121,23 +143,35 @@ class RegistroPostulanteView(generics.CreateAPIView):
         # cuenta en vez de intentar crear una con el mismo username (cédula) dos
         # veces, que choca contra el unique constraint de User.
         usuario = postulante.usuario
-        if usuario is None:
+        cuenta_nueva = usuario is None
+        if cuenta_nueva:
+            # is_active=False: no puede loguearse hasta verificar el correo (ver
+            # VerificarCorreoView) — si ya tenía cuenta (agente le limpió la foto
+            # para que la resuba), no se la vuelve a bloquear ni se le manda otro
+            # código, ya la había verificado la primera vez.
             usuario = User.objects.create_user(
-                username=postulante.cedula, password=serializer.validated_data["password"]
+                username=postulante.cedula,
+                password=serializer.validated_data["password"],
+                is_active=False,
             )
-        serializer.save(embedding=embedding, usuario=usuario)
+        postulante_guardado = serializer.save(embedding=embedding, usuario=usuario)
+        if cuenta_nueva:
+            _generar_y_enviar_codigo_verificacion(postulante_guardado)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def perform_create(self, serializer):
         embedding = _procesar_foto_de_registro(self.request.FILES["foto"])
         # username = cédula: el postulante se loguea después (/api/token/, mismo
         # endpoint JWT que ya usan los agentes) para revisar/corregir sus datos
-        # antes del día de la prueba (ver MiPostulanteView).
+        # antes del día de la prueba (ver MiPostulanteView). is_active=False: no
+        # puede hacerlo hasta verificar el correo (ver VerificarCorreoView).
         usuario = User.objects.create_user(
             username=serializer.validated_data["cedula"],
             password=serializer.validated_data["password"],
+            is_active=False,
         )
-        serializer.save(embedding=embedding, usuario=usuario)
+        postulante = serializer.save(embedding=embedding, usuario=usuario)
+        _generar_y_enviar_codigo_verificacion(postulante)
 
 
 class ProbarEncuadreView(APIView):
@@ -169,6 +203,71 @@ class ProbarEncuadreView(APIView):
             return Response({"ok": False, "motivo": problema})
 
         return Response({"ok": True})
+
+
+class VerificarCorreoView(APIView):
+    """Confirma que el correo dado en el registro es del propio postulante — la
+    cuenta se crea con is_active=False (ver RegistroPostulanteView) hasta que esto
+    pasa; Django ya rechaza el login de una cuenta inactiva sin más código."""
+
+    authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "verificar-correo"
+
+    def post(self, request):
+        cedula = request.data.get("cedula")
+        codigo = request.data.get("codigo")
+        if not cedula or not codigo:
+            raise ValidationError({"codigo": "Cédula y código son obligatorios."})
+
+        try:
+            postulante = Postulante.objects.select_related("usuario").get(cedula=cedula)
+        except Postulante.DoesNotExist:
+            raise ValidationError({"cedula": "No existe un registro con esa cédula."})
+
+        if not postulante.usuario or not postulante.codigo_verificacion:
+            raise ValidationError(
+                {"codigo": "No hay ninguna verificación pendiente para esta cédula."}
+            )
+
+        vencido = now() - postulante.codigo_generado_en > datetime.timedelta(
+            minutes=MINUTOS_EXPIRACION_CODIGO_VERIFICACION
+        )
+        if vencido:
+            raise ValidationError({"codigo": "El código expiró. Pedí uno nuevo."})
+        if codigo != postulante.codigo_verificacion:
+            raise ValidationError({"codigo": "Código incorrecto."})
+
+        postulante.usuario.is_active = True
+        postulante.usuario.save(update_fields=["is_active"])
+        postulante.codigo_verificacion = None
+        postulante.codigo_generado_en = None
+        postulante.save(update_fields=["codigo_verificacion", "codigo_generado_en"])
+        return Response({"verificado": True})
+
+
+class ReenviarCodigoView(APIView):
+    """Genera y manda un código nuevo, invalidando el anterior — para cuando
+    expiró o no llegó el correo (ver VerificarCorreoView)."""
+
+    authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "reenviar-codigo"
+
+    def post(self, request):
+        cedula = request.data.get("cedula")
+        if not cedula:
+            raise ValidationError({"cedula": "Este campo es obligatorio."})
+
+        try:
+            postulante = Postulante.objects.select_related("usuario").get(cedula=cedula)
+        except Postulante.DoesNotExist:
+            raise ValidationError({"cedula": "No existe un registro con esa cédula."})
+        if not postulante.usuario:
+            raise ValidationError({"cedula": "No hay ningún registro pendiente para esta cédula."})
+
+        _generar_y_enviar_codigo_verificacion(postulante)
+        return Response({"reenviado": True})
 
 
 class AgregarFotoPostulanteView(generics.CreateAPIView):

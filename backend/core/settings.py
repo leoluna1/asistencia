@@ -192,6 +192,18 @@ ASISTENCIA_RANGO_YAW_MIN = env.float("ASISTENCIA_RANGO_YAW_MIN", default=0.32)
 ASISTENCIA_RANGO_YAW_MAX = env.float("ASISTENCIA_RANGO_YAW_MAX", default=0.68)
 ASISTENCIA_UMBRAL_BRILLO_MINIMO = env.float("ASISTENCIA_UMBRAL_BRILLO_MINIMO", default=60)
 
+# Código de verificación de correo en el registro (ver VerificarCorreoView):
+# backend de consola en dev (el código se imprime en la terminal del backend,
+# nada de correos reales) — SMTP configurable por env para cuando la Policía
+# Nacional defina su proveedor real, mismo patrón que USE_S3 arriba.
+EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = env('EMAIL_HOST', default='')
+EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@localhost')
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -216,5 +228,10 @@ REST_FRAMEWORK = {
         'user': '300/min',
         'login': '10/min',
         'verificar': '30/min',
+        # Código de 6 dígitos: sin esto, fuerza bruta contra 1M combinaciones es
+        # viable. reenviar-codigo más estricto todavía — también evita usarlo de
+        # spam de correo hacia un tercero (solo hace falta la cédula).
+        'verificar-correo': '10/min',
+        'reenviar-codigo': '5/min',
     },
 }

@@ -47,6 +47,11 @@ class Postulante(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="postulante",
     )
+    # Verificación de correo (ver VerificarCorreoView): la cuenta se crea con
+    # is_active=False hasta confirmar que el correo es del propio postulante.
+    # Null cuando no hay verificación pendiente (ya verificado, o todavía sin foto).
+    codigo_verificacion = models.CharField(max_length=6, null=True, blank=True)
+    codigo_generado_en = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.nombres} {self.apellidos} ({self.cedula})"

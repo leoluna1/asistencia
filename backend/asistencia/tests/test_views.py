@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -59,6 +60,20 @@ class RegistroPostulanteViewTest(APITestCase):
         postulante = Postulante.objects.get(cedula="1710034065")
         self.assertIsNotNone(postulante.embedding)
         self.assertEqual(len(postulante.embedding), 128)
+
+    def test_cuenta_queda_inactiva_hasta_verificar_el_correo(self):
+        self.client.post(self.url, self._datos(), format="multipart")
+        postulante = Postulante.objects.get(cedula="1710034065")
+        self.assertFalse(postulante.usuario.is_active)
+        self.assertIsNotNone(postulante.codigo_verificacion)
+        self.assertEqual(len(postulante.codigo_verificacion), 6)
+
+    def test_manda_el_codigo_de_verificacion_por_correo(self):
+        self.client.post(self.url, self._datos(), format="multipart")
+        self.assertEqual(len(mail.outbox), 1)
+        postulante = Postulante.objects.get(cedula="1710034065")
+        self.assertEqual(mail.outbox[0].to, ["juan.perez@example.com"])
+        self.assertIn(postulante.codigo_verificacion, mail.outbox[0].body)
 
     def test_rechaza_foto_sin_rostro_detectable(self):
         foto_sin_rostro = SimpleUploadedFile(
@@ -156,6 +171,22 @@ class RegistroPostulanteViewTest(APITestCase):
         postulante = Postulante.objects.get(cedula="1710034065")
         self.assertEqual(postulante.usuario_id, usuario_previo.id)
         self.assertEqual(User.objects.filter(username="1710034065").count(), 1)
+        # Ya la había verificado la primera vez — no se la vuelve a bloquear ni
+        # se le manda otro código solo por resubir la foto.
+        usuario_previo.refresh_from_db()
+        self.assertTrue(usuario_previo.is_active)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_completar_precarga_con_cuenta_nueva_tambien_queda_inactiva(self):
+        Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito",
+        )
+        self.client.post(self.url, self._datos(), format="multipart")
+        postulante = Postulante.objects.get(cedula="1710034065")
+        self.assertFalse(postulante.usuario.is_active)
+        self.assertIsNotNone(postulante.codigo_verificacion)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_dos_registros_simultaneos_con_misma_cedula_da_400_no_500(self):
         # Simula la ventana de carrera: el UniqueValidator del serializer solo
@@ -277,6 +308,78 @@ def _imagen_lisa_jpeg() -> bytes:
     ok, buffer = cv2.imencode(".jpg", imagen)
     assert ok
     return buffer.tobytes()
+
+
+class VerificarCorreoViewTest(APITestCase):
+    url = "/api/postulantes/verificar-correo/"
+
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username="1710034065", password="clave-segura-123", is_active=False
+        )
+        self.postulante = Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito", correo="juan@example.com",
+            usuario=self.usuario, codigo_verificacion="123456",
+            codigo_generado_en=timezone.now(),
+        )
+
+    def test_codigo_correcto_activa_la_cuenta(self):
+        response = self.client.post(self.url, {"cedula": "1710034065", "codigo": "123456"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.usuario.refresh_from_db()
+        self.assertTrue(self.usuario.is_active)
+        self.postulante.refresh_from_db()
+        self.assertIsNone(self.postulante.codigo_verificacion)
+
+    def test_codigo_incorrecto_no_activa_la_cuenta(self):
+        response = self.client.post(self.url, {"cedula": "1710034065", "codigo": "000000"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.usuario.refresh_from_db()
+        self.assertFalse(self.usuario.is_active)
+
+    def test_codigo_vencido_no_activa_la_cuenta(self):
+        self.postulante.codigo_generado_en = timezone.now() - datetime.timedelta(minutes=16)
+        self.postulante.save()
+        response = self.client.post(self.url, {"cedula": "1710034065", "codigo": "123456"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.usuario.refresh_from_db()
+        self.assertFalse(self.usuario.is_active)
+
+    def test_cedula_inexistente_es_error_de_validacion(self):
+        response = self.client.post(self.url, {"cedula": "9999999999", "codigo": "123456"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ReenviarCodigoViewTest(APITestCase):
+    url = "/api/postulantes/reenviar-codigo/"
+
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username="1710034065", password="clave-segura-123", is_active=False
+        )
+        self.postulante = Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito", correo="juan@example.com",
+            usuario=self.usuario, codigo_verificacion="123456",
+            codigo_generado_en=timezone.now() - datetime.timedelta(minutes=20),
+        )
+
+    def test_genera_un_codigo_nuevo_que_invalida_el_anterior(self):
+        response = self.client.post(self.url, {"cedula": "1710034065"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.postulante.refresh_from_db()
+        self.assertNotEqual(self.postulante.codigo_verificacion, "123456")
+        self.assertEqual(len(mail.outbox), 1)
+        # El código viejo ya no sirve.
+        response = self.client.post(
+            "/api/postulantes/verificar-correo/", {"cedula": "1710034065", "codigo": "123456"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cedula_inexistente_es_error_de_validacion(self):
+        response = self.client.post(self.url, {"cedula": "9999999999"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP)
@@ -883,7 +986,7 @@ class LoginDePostulanteTest(APITestCase):
     postulante puede loguearse después por el mismo /api/token/ que usan los
     agentes — este test cubre ese camino de punta a punta."""
 
-    def test_se_loguea_con_la_cuenta_creada_al_registrarse(self):
+    def test_no_se_puede_loguear_antes_de_verificar_el_correo(self):
         datos = {
             "nombres": "Juan", "apellidos": "Pérez", "cedula": "1710034065",
             "estatura_cm": 175, "fecha_nacimiento": "1995-05-20",
@@ -891,6 +994,24 @@ class LoginDePostulanteTest(APITestCase):
             "sede": "Quito", "foto": _foto("rostro_real.jpg"), "password": "clave-segura-123",
         }
         self.client.post("/api/postulantes/", datos, format="multipart")
+
+        response = self.client.post(
+            "/api/token/", {"username": "1710034065", "password": "clave-segura-123"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_se_loguea_con_la_cuenta_creada_al_registrarse_una_vez_verificado_el_correo(self):
+        datos = {
+            "nombres": "Juan", "apellidos": "Pérez", "cedula": "1710034065",
+            "estatura_cm": 175, "fecha_nacimiento": "1995-05-20",
+            "telefono": "0991234567", "correo": "juan@example.com", "genero": "M",
+            "sede": "Quito", "foto": _foto("rostro_real.jpg"), "password": "clave-segura-123",
+        }
+        self.client.post("/api/postulantes/", datos, format="multipart")
+        codigo = Postulante.objects.get(cedula="1710034065").codigo_verificacion
+        self.client.post(
+            "/api/postulantes/verificar-correo/", {"cedula": "1710034065", "codigo": codigo}
+        )
 
         response = self.client.post(
             "/api/token/", {"username": "1710034065", "password": "clave-segura-123"}
@@ -914,6 +1035,10 @@ class TokenConRolTest(APITestCase):
             "sede": "Quito", "foto": _foto("rostro_real.jpg"), "password": "clave-segura-123",
         }
         self.client.post("/api/postulantes/", datos, format="multipart")
+        codigo = Postulante.objects.get(cedula="1710034065").codigo_verificacion
+        self.client.post(
+            "/api/postulantes/verificar-correo/", {"cedula": "1710034065", "codigo": codigo}
+        )
 
         response = self.client.post(
             "/api/token/", {"username": "1710034065", "password": "clave-segura-123"}

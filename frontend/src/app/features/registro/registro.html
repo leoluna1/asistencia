@@ -104,7 +104,7 @@
       @if (!datosCompletos) {
         <app-mensaje tipo="error">Completa todos los campos para continuar.</app-mensaje>
       }
-    } @else {
+    } @else if (paso() === 'foto') {
       @if (fotoPreview()) {
         <img class="preview" [src]="fotoPreview()" alt="Foto capturada" />
         <button mat-stroked-button type="button" (click)="retomarFoto()">Retomar foto</button>
@@ -114,9 +114,6 @@
 
       @if (error()) {
         <app-mensaje tipo="error">{{ error() }}</app-mensaje>
-      }
-      @if (exito()) {
-        <app-mensaje tipo="ok">Postulante registrado correctamente.</app-mensaje>
       }
 
       <button
@@ -130,6 +127,44 @@
         } @else {
           Registrar
         }
+      </button>
+    } @else {
+      <app-mensaje tipo="ok">Registro exitoso. Te enviamos un código a {{ correo }}.</app-mensaje>
+      <p class="requisito">Ingresá el código de 6 dígitos para activar tu cuenta.</p>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Código</mat-label>
+        <input
+          matInput
+          required
+          inputmode="numeric"
+          maxlength="6"
+          [(ngModel)]="codigoIngresado"
+          (keyup.enter)="verificarCodigo()"
+        />
+      </mat-form-field>
+
+      @if (errorCodigo()) {
+        <app-mensaje tipo="error">{{ errorCodigo() }}</app-mensaje>
+      }
+      @if (codigoReenviado()) {
+        <app-mensaje tipo="ok">Te enviamos un código nuevo.</app-mensaje>
+      }
+
+      <button
+        mat-flat-button
+        color="primary"
+        [disabled]="!codigoIngresado || verificando()"
+        (click)="verificarCodigo()"
+      >
+        @if (verificando()) {
+          <mat-progress-spinner diameter="18" mode="indeterminate" />
+        } @else {
+          Verificar
+        }
+      </button>
+      <button mat-stroked-button type="button" [disabled]="reenviando()" (click)="reenviarCodigo()">
+        Reenviar código
       </button>
     }
   </mat-card>

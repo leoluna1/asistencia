@@ -69,4 +69,16 @@ export class PostulantesService {
       this.http.post<ResultadoEncuadre>(`${API_BASE_URL}/postulantes/probar-encuadre/`, form)
     );
   }
+
+  verificarCorreo(cedula: string, codigo: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${API_BASE_URL}/postulantes/verificar-correo/`, { cedula, codigo })
+    );
+  }
+
+  reenviarCodigo(cedula: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${API_BASE_URL}/postulantes/reenviar-codigo/`, { cedula })
+    );
+  }
 }

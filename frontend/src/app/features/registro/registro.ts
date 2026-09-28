@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -10,6 +11,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { CameraCapture } from '../../shared/camera-capture/camera-capture';
 import { InlineMessage } from '../../shared/inline-message/inline-message';
+import { AuthService } from '../../core/auth.service';
 import { PostulantesService } from '../../core/postulantes.service';
 import { primerMensajeDeError } from '../../core/errores';
 import { cedulaEcuatorianaValida, soloDigitos } from '../../core/validators';
@@ -53,16 +55,26 @@ export class Registro {
 
   // 'datos' primero, sin tocar la cámara — recién en 'foto' se llama a
   // getUserMedia (dentro de <app-camera-capture>), para no pedir permiso de
-  // cámara mientras la persona todavía está llenando el formulario.
-  readonly paso = signal<'datos' | 'foto'>('datos');
+  // cámara mientras la persona todavía está llenando el formulario. 'codigo':
+  // la cuenta queda inactiva hasta confirmar el correo (ver VerificarCorreoView).
+  readonly paso = signal<'datos' | 'foto' | 'codigo'>('datos');
 
   readonly foto = signal<Blob | null>(null);
   readonly fotoPreview = signal<string | null>(null);
   readonly enviando = signal(false);
   readonly error = signal<string | null>(null);
-  readonly exito = signal(false);
 
-  constructor(private postulantes: PostulantesService) {}
+  codigoIngresado = '';
+  readonly verificando = signal(false);
+  readonly errorCodigo = signal<string | null>(null);
+  readonly reenviando = signal(false);
+  readonly codigoReenviado = signal(false);
+
+  constructor(
+    private postulantes: PostulantesService,
+    private auth: AuthService,
+    private router: Router
+  ) {}
 
   // Escribe el valor filtrado directo en el <input>: si el resultado filtrado
   // coincide con el valor previo del modelo (ej. se pegó texto con dígitos de más
@@ -131,7 +143,6 @@ export class Registro {
     if (!this.formCompleto) return;
     this.enviando.set(true);
     this.error.set(null);
-    this.exito.set(false);
     try {
       await this.postulantes.registrar({
         nombres: this.nombres,
@@ -145,18 +156,46 @@ export class Registro {
         foto: this.foto()!,
         password: this.password
       });
-      this.exito.set(true);
-      this.nombres = this.apellidos = this.cedula = '';
-      this.telefono = this.correo = this.genero = this.password = '';
-      this.fechaNacimiento = null;
-      this.estatura_cm = null;
-      this.foto.set(null);
-      this.fotoPreview.set(null);
-      this.paso.set('datos');
     } catch (e: any) {
       this.error.set(primerMensajeDeError(e?.error) || 'No se pudo registrar al postulante.');
+      return;
     } finally {
       this.enviando.set(false);
+    }
+    // La cuenta queda inactiva hasta confirmar el correo (ver
+    // VerificarCorreoView) — antes esto logueaba directo, pero el cliente pidió
+    // que primero se confirme que el correo es real.
+    this.paso.set('codigo');
+  }
+
+  async verificarCodigo(): Promise<void> {
+    if (!this.codigoIngresado) return;
+    this.verificando.set(true);
+    this.errorCodigo.set(null);
+    try {
+      await this.postulantes.verificarCorreo(this.cedula, this.codigoIngresado);
+      // Recién acá se loguea — con la misma clave que ya escribió — y se lo
+      // manda a su panel, que sirve de confirmación de que todo funcionó.
+      await this.auth.login(this.cedula, this.password);
+      this.router.navigate(['/mi-postulante']);
+    } catch (e: any) {
+      this.errorCodigo.set(primerMensajeDeError(e?.error) || 'No se pudo verificar el código.');
+    } finally {
+      this.verificando.set(false);
+    }
+  }
+
+  async reenviarCodigo(): Promise<void> {
+    this.reenviando.set(true);
+    this.errorCodigo.set(null);
+    this.codigoReenviado.set(false);
+    try {
+      await this.postulantes.reenviarCodigo(this.cedula);
+      this.codigoReenviado.set(true);
+    } catch (e: any) {
+      this.errorCodigo.set(primerMensajeDeError(e?.error) || 'No se pudo reenviar el código.');
+    } finally {
+      this.reenviando.set(false);
     }
   }
 }
