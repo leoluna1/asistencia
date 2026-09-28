@@ -307,13 +307,26 @@ def _parsear_fecha(valor, *, limite_de_dia):
     valor sin hora, sino esa fecha a medianoche, lo que rompería silenciosamente
     el límite "fin" (quedaría en medianoche en vez de fin de día). parse_date()
     es estricto con el formato YYYY-MM-DD y sí devuelve None ante un datetime
-    completo, así que sirve para distinguir los dos casos de forma confiable."""
-    fecha = parse_date(valor)
+    completo, así que sirve para distinguir los dos casos de forma confiable.
+
+    Ojo también: parse_date()/parse_datetime() devuelven None ante un valor con
+    una FORMA irreconocible, pero no ante uno con la forma correcta y un valor
+    imposible (ej. "2026-02-30" o "...T25:00:00") — ahí intentan construir el
+    date/datetime directo y dejan escapar el ValueError sin capturar. Se atajan
+    acá para que, como dice el docstring, un valor mal formado se ignore en vez
+    de tirar 500."""
+    try:
+        fecha = parse_date(valor)
+    except ValueError:
+        fecha = None
     if fecha is not None:
         hora = datetime.time.min if limite_de_dia == "inicio" else datetime.time.max
         momento = datetime.datetime.combine(fecha, hora)
     else:
-        momento = parse_datetime(valor)
+        try:
+            momento = parse_datetime(valor)
+        except ValueError:
+            momento = None
         if momento is None:
             return None
     if is_naive(momento):
@@ -431,8 +444,14 @@ class ExportarAsistenciasView(APIView):
         return self._pdf(queryset)
 
     def _csv(self, queryset):
-        response = HttpResponse(content_type="text/csv")
+        # charset explícito + BOM (﻿): nombres/apellidos son texto libre del
+        # autoregistro y pueden traer tildes/ñ (ej. "José Muñoz") — sin esto Excel
+        # en Windows asume la codificación del sistema en vez de UTF-8 y las
+        # rompe (mojibake). El BOM es el truco estándar que Excel usa para
+        # detectar UTF-8 en un CSV.
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="asistencias.csv"'
+        response.write("﻿")
         writer = csv.writer(response)
         writer.writerow(["Cédula", "Nombres", "Apellidos", "Sede", "Método", "Hora"])
         for asistencia in queryset:

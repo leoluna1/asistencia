@@ -590,6 +590,34 @@ class ListaAsistenciasViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)
 
+    def test_fecha_bien_formada_pero_fuera_de_rango_no_rompe_ni_filtra(self):
+        # "2026-02-30" matchea el regex de fecha de Django (\d{4}-\d{1,2}-\d{1,2})
+        # pero no es un día real: parse_date() prueba primero fromisoformat (lanza
+        # ValueError, la captura) y cae a un segundo intento por regex que llama
+        # datetime.date(2026, 2, 30) directo — ESE ValueError no lo capturaba nadie
+        # y salía como 500, contradiciendo el propio comentario de la función ("un
+        # valor mal formado se ignora en vez de romper la request").
+        self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"desde": "2026-02-30"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 1)
+
+    def test_datetime_bien_formado_pero_fuera_de_rango_no_rompe_ni_filtra(self):
+        # Mismo problema que arriba pero por el lado de parse_datetime() (hora 25
+        # no existe) — cubre la otra rama de _parsear_fecha.
+        self._crear_asistencia(
+            "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
+        )
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"desde": "2026-01-01T25:00:00"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 1)
+
     def test_combina_varios_filtros(self):
         self._crear_asistencia(
             "1111111111", "Ana", "Lopez", "Quito", Asistencia.Metodo.AUTOMATICO
@@ -673,6 +701,14 @@ class ResumenAsistenciasViewTest(APITestCase):
         por_metodo = {fila["metodo"]: fila["total"] for fila in response.data["por_metodo"]}
         self.assertEqual(por_metodo, {"MANUAL": 1})
 
+    def test_fecha_fuera_de_rango_no_rompe_el_resumen(self):
+        # Ver el mismo caso en ListaAsistenciasViewTest — _filtrar_asistencias es
+        # compartida por los 3 endpoints de asistencias.
+        self._crear_asistencia("1111111111", "Quito", Asistencia.Metodo.AUTOMATICO)
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url, {"desde": "2026-02-30"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_vacio_no_rompe(self):
         self.client.force_authenticate(self.agente)
         response = self.client.get(self.url)
@@ -710,18 +746,44 @@ class ExportarAsistenciasViewTest(APITestCase):
         response = self.client.get(self.url, {"formato": "xml"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_fecha_fuera_de_rango_no_rompe_la_exportacion(self):
+        # Ver el mismo caso en ListaAsistenciasViewTest — _filtrar_asistencias es
+        # compartida por los 3 endpoints de asistencias.
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url, {"formato": "csv", "desde": "2026-02-30"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_exporta_csv(self):
         self.client.force_authenticate(self.agente)
         response = self.client.get(self.url, {"formato": "csv"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response["Content-Type"], "text/csv")
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn("attachment", response["Content-Disposition"])
 
-        contenido = response.content.decode("utf-8")
+        contenido = response.content.decode("utf-8-sig")
         self.assertIn("1111111111", contenido)
         self.assertIn("Ana", contenido)
         lineas = [linea for linea in contenido.strip().split("\r\n") if linea]
         self.assertEqual(len(lineas), 2)  # encabezado + 1 fila
+
+    def test_csv_usa_utf8_con_bom_para_que_excel_no_rompa_tildes(self):
+        # Content-Type sin charset + sin BOM: Excel en Windows asume la
+        # codificación del sistema (ej. Windows-1252) en vez de UTF-8, y
+        # "José Muñoz" se ve como mojibake ("JosÃ© MuÃ±oz") al abrir el CSV. El
+        # BOM (﻿) es el truco estándar que Excel usa para detectar UTF-8.
+        postulante = Postulante.objects.create(
+            nombres="José", apellidos="Muñoz", cedula="4444444444",
+            estatura_cm=170, sede="Quito", foto=_foto("rostro_real.jpg", "d.jpg"),
+        )
+        Asistencia.objects.create(postulante=postulante, sede="Quito")
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"formato": "csv", "q": "4444444444"})
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertTrue(response.content.startswith(b"\xef\xbb\xbf"))
+        contenido = response.content.decode("utf-8-sig")
+        self.assertIn("José", contenido)
+        self.assertIn("Muñoz", contenido)
 
     def test_exporta_pdf(self):
         self.client.force_authenticate(self.agente)

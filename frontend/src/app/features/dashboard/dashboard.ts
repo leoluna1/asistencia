@@ -114,23 +114,28 @@ export class Dashboard implements OnInit, OnDestroy {
 
   private async actualizar(): Promise<void> {
     this.actualizando.set(true);
-    try {
-      this.filas.set(await this.asistencia.listar(this.filtrosActuales));
-    } catch {
-      // ponytail: si falla un polling, se reintenta solo en el próximo tick — no
-      // hace falta mostrar un error por un fallo aislado de red.
-    } finally {
-      this.actualizando.set(false);
+    // Lista y resumen son independientes (si uno falla, el otro sigue
+    // funcionando igual) — se piden en paralelo con allSettled en vez de una
+    // await tras otra, que doblaba la latencia de cada poll de 4s sin motivo.
+    const [resultadoLista, resultadoResumen] = await Promise.allSettled([
+      this.asistencia.listar(this.filtrosActuales),
+      this.asistencia.resumen(this.filtrosActuales)
+    ]);
+    this.actualizando.set(false);
+
+    if (resultadoLista.status === 'fulfilled') {
+      this.filas.set(resultadoLista.value);
     }
-    // Los gráficos son independientes de la tabla: si el resumen falla, la
-    // tabla sigue funcionando igual (y viceversa).
-    try {
-      const resumen = await this.asistencia.resumen(this.filtrosActuales);
+    // ponytail: si falla un polling, se reintenta solo en el próximo tick — no
+    // hace falta mostrar un error por un fallo aislado de red.
+
+    if (resultadoResumen.status === 'fulfilled') {
+      const resumen = resultadoResumen.value;
       this.porSede.set(porSedeAGrafico(resumen));
       this.porMetodo.set(porMetodoAGrafico(resumen));
       this.porHora.set(porHoraAGrafico(resumen));
       this.errorResumen.set(null);
-    } catch {
+    } else {
       this.errorResumen.set('No se pudieron cargar los gráficos.');
     }
   }
