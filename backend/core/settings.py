@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,11 +25,21 @@ environ.Env.read_env(BASE_DIR / ".env")
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env("DJANGO_SECRET_KEY", default='django-insecure-1%(52t9jfpsf!0$k(yb3f_$p-*sk*oc6!s5y6c0-xaab#6h2@l')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DJANGO_DEBUG", default=True)
+
+# SECURITY WARNING: keep the secret key used in production secret!
+_SECRET_KEY_INSEGURA_DEV = 'django-insecure-1%(52t9jfpsf!0$k(yb3f_$p-*sk*oc6!s5y6c0-xaab#6h2@l'
+SECRET_KEY = env("DJANGO_SECRET_KEY", default=_SECRET_KEY_INSEGURA_DEV)
+if not DEBUG and SECRET_KEY == _SECRET_KEY_INSEGURA_DEV:
+    # Sin esto, un despliegue con DEBUG=False pero sin DJANGO_SECRET_KEY en el .env
+    # arrancaba igual con esta clave de desarrollo — está en el repo, es la misma
+    # para cualquiera que lo clone. Mejor fallar fuerte acá que servir tráfico real
+    # con una clave que cualquiera con acceso al código ya conoce.
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY no está definida en el entorno: es obligatoria cuando "
+        "DJANGO_DEBUG=False (producción)."
+    )
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
@@ -147,7 +158,14 @@ if USE_S3:
     AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
     AWS_S3_ENDPOINT_URL = env('AWS_S3_ENDPOINT_URL')  # ej. https://nyc3.digitaloceanspaces.com
     AWS_S3_CUSTOM_DOMAIN = env('AWS_S3_CUSTOM_DOMAIN', default=None)  # CDN, si aplica
-    AWS_DEFAULT_ACL = 'public-read'
+    # Privado, NO public-read: las fotos son datos biométricos de postulantes a la
+    # Policía Nacional (retención todavía sin definir legalmente por el cliente, ver
+    # docs/00-REFERENCIA-PROYECTO.md) — no deben quedar accesibles por URL directa sin
+    # autenticar. AWS_QUERYSTRING_AUTH genera URLs firmadas con expiración en vez de
+    # públicas permanentes (default de django-storages, explícito acá a propósito).
+    AWS_DEFAULT_ACL = 'private'
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = env.int('AWS_QUERYSTRING_EXPIRE', default=3600)
     AWS_S3_FILE_OVERWRITE = False
 
 # Default primary key field type
@@ -183,4 +201,20 @@ REST_FRAMEWORK = {
     # dashboard lo pide entero cada pocos segundos — esto es lo mínimo, no un filtro.
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
+    # anon/user son el piso global (cubren registro y el sondeo de encuadre, que
+    # polea cada ~900ms mientras el postulante se acomoda — 120/min les da margen
+    # cómodo). login/verificar son más estrictos a propósito: fuerza bruta de
+    # contraseña y "pesca" de coincidencias 1:N (VerificarAsistenciaView expone
+    # datos del postulante en la respuesta) son los dos vectores de abuso reales,
+    # sin relación con el volumen normal de uso de un kiosco supervisado.
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/min',
+        'user': '300/min',
+        'login': '10/min',
+        'verificar': '30/min',
+    },
 }

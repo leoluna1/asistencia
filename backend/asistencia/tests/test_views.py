@@ -9,11 +9,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import AccessToken
 
 from asistencia.facial import get_embedding
@@ -301,6 +303,24 @@ class VerificarAsistenciaViewTest(APITestCase):
         self.assertFalse(response.data["ya_registrado"])
         self.assertEqual(Asistencia.objects.count(), 1)
         self.assertEqual(Asistencia.objects.get().metodo, Asistencia.Metodo.AUTOMATICO)
+
+    def test_no_expone_pii_del_postulante_en_la_respuesta_publica(self):
+        # /api/verificar/ no exige login (ver nota de authentication_classes en la
+        # vista) — cualquiera con acceso de red podía mandar fotos al voleo
+        # buscando coincidencia 1:N y recibir foto/teléfono/correo/fecha de
+        # nacimiento/género/estatura de un postulante real. El kiosco solo
+        # muestra nombre y apellido en pantalla (ver verificar.html), no hace
+        # falta exponer el resto acá.
+        self.postulante.telefono = "0991234567"
+        self.postulante.correo = "juan@example.com"
+        self.postulante.save()
+
+        response = self.client.post(
+            self.url, {"sede": "Quito", "foto": _foto("rostro_real.jpg")}, format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        datos_postulante = response.data["postulante"]
+        self.assertEqual(set(datos_postulante.keys()), {"id", "nombres", "apellidos"})
 
     def test_segunda_verificacion_no_duplica_asistencia(self):
         self.client.post(self.url, {"sede": "Quito", "foto": _foto("rostro_real.jpg")}, format="multipart")
@@ -847,3 +867,30 @@ class TokenConRolTest(APITestCase):
         )
         access = AccessToken(response.data["access"])
         self.assertTrue(access["is_staff"])
+
+
+class ThrottlingTest(APITestCase):
+    """Antes no había ningún límite a los intentos de login ni al fisgoneo del
+    1:N de /api/verificar/ (ver revisión de seguridad: ese endpoint es público y
+    devuelve datos del postulante si hay coincidencia) — cubre que el throttle
+    scope quede realmente wireado en ambas vistas, no solo declarado en settings.
+
+    THROTTLE_RATES se parchea a un límite chico por test (en vez de usar el real,
+    120/10/30 por minuto) para no depender de esperar un minuto real ni de que
+    ningún otro test haya "gastado" cupo contra la misma IP/caché de proceso."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_login_se_bloquea_tras_superar_el_limite_de_intentos(self):
+        with patch.dict(ScopedRateThrottle.THROTTLE_RATES, {"login": "2/min"}):
+            for _ in range(2):
+                self.client.post("/api/token/", {"username": "x", "password": "y"})
+            respuesta = self.client.post("/api/token/", {"username": "x", "password": "y"})
+        self.assertEqual(respuesta.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_verificar_se_bloquea_tras_superar_el_limite_de_intentos(self):
+        with patch.dict(ScopedRateThrottle.THROTTLE_RATES, {"verificar": "1/min"}):
+            self.client.post("/api/verificar/", {})
+            respuesta = self.client.post("/api/verificar/", {})
+        self.assertEqual(respuesta.status_code, status.HTTP_429_TOO_MANY_REQUESTS)

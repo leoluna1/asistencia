@@ -13,12 +13,21 @@ export interface Postulante {
   creado_en: string;
 }
 
+/** /api/verificar/ es público (sin login) — a propósito devuelve solo esto del
+ * postulante, no el Postulante completo (ver PostulanteVerificacionSerializer en
+ * el backend: nada de foto/teléfono/correo/fecha de nacimiento expuesto ahí). */
+export interface PostulanteVerificacion {
+  id: number;
+  nombres: string;
+  apellidos: string;
+}
+
 export interface ResultadoVerificacion {
   verificado: boolean;
   motivo?: 'no_se_detecto_rostro' | 'sin_coincidencia';
   confianza?: number | null;
   ya_registrado?: boolean;
-  postulante?: Postulante;
+  postulante?: PostulanteVerificacion;
   verificado_en?: string;
 }
 

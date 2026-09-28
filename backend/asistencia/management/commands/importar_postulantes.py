@@ -40,11 +40,21 @@ class Command(BaseCommand):
                     omitidos += 1
                     continue
 
+                estatura_raw = fila["estatura_cm"].strip()
+                try:
+                    estatura_cm = int(estatura_raw)
+                except ValueError:
+                    self.stderr.write(
+                        f"Fila {numero_fila}: estatura_cm inválida ('{estatura_raw}'), omitida."
+                    )
+                    omitidos += 1
+                    continue
+
                 postulante = Postulante(
                     nombres=fila["nombres"].strip(),
                     apellidos=fila["apellidos"].strip(),
                     cedula=cedula,
-                    estatura_cm=int(fila["estatura_cm"]),
+                    estatura_cm=estatura_cm,
                     sede=fila["sede"].strip(),
                 )
                 try:

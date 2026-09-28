@@ -16,6 +16,7 @@ from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -34,6 +35,7 @@ from .serializers import (
     FotoPostulanteSerializer,
     MiPostulanteSerializer,
     PostulanteSerializer,
+    PostulanteVerificacionSerializer,
     TokenConRolSerializer,
 )
 
@@ -211,6 +213,12 @@ class VerificarAsistenciaView(APIView):
     # Público (ver nota en RegistroPostulanteView: evita 401 por un token viejo) — el
     # kiosco de verificación no loguea a nadie, cualquier postulante puede sentarse.
     authentication_classes = []
+    # Throttle propio y más estricto que el piso global (ver settings.py): sin esto,
+    # cualquiera con acceso de red al backend (no solo el kiosco físico) podía mandar
+    # fotos al voleo intentando encontrar coincidencia 1:N y recibir en la respuesta
+    # los datos personales (foto, teléfono, correo, etc.) de un postulante real.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "verificar"
 
     def post(self, request):
         sede = request.data.get("sede")
@@ -281,7 +289,7 @@ class VerificarAsistenciaView(APIView):
                 "verificado": True,
                 "ya_registrado": not creada,
                 "confianza": confianza,
-                "postulante": PostulanteSerializer(postulante, context={"request": request}).data,
+                "postulante": PostulanteVerificacionSerializer(postulante).data,
                 "verificado_en": asistencia.verificado_en,
             }
         )
@@ -508,3 +516,7 @@ class TokenConRolView(TokenObtainPairView):
     contrato, solo agrega `is_staff` al JWT (ver TokenConRolSerializer)."""
 
     serializer_class = TokenConRolSerializer
+    # Throttle propio (ver settings.py): sin esto no había ningún límite a los
+    # intentos de contraseña contra este endpoint, compartido por agentes y postulantes.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"

@@ -56,6 +56,20 @@ class ImportarPostulantesTest(TestCase):
         call_command("importar_postulantes", csv_path)
         self.assertEqual(Postulante.objects.count(), 0)
 
+    def test_omite_estatura_no_numerica_en_vez_de_abortar_todo_el_archivo(self):
+        # int(fila["estatura_cm"]) corría fuera del try/except de ValidationError:
+        # una fila con la estatura vacía o con texto (typo de la convocatoria)
+        # lanzaba ValueError sin capturar y abortaba la carga completa (miles de
+        # filas), en vez de omitir solo esa fila como el resto de errores.
+        csv_path = self._csv(
+            "nombres,apellidos,cedula,estatura_cm,sede\n"
+            "Juan,Pérez,1710034065,,Quito\n"
+            "Ana,Lopez,1719141770,160,Cuenca\n"
+        )
+        call_command("importar_postulantes", csv_path)
+        self.assertEqual(Postulante.objects.count(), 1)
+        self.assertTrue(Postulante.objects.filter(cedula="1719141770").exists())
+
     def test_falla_si_faltan_columnas(self):
         csv_path = self._csv("nombres,apellidos,cedula\nJuan,Pérez,1710034065\n")
         with self.assertRaises(CommandError):

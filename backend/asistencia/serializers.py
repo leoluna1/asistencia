@@ -82,6 +82,20 @@ class MiPostulanteSerializer(PostulanteSerializer):
         read_only_fields = PostulanteSerializer.Meta.read_only_fields + ["cedula", "foto"]
 
 
+class PostulanteVerificacionSerializer(serializers.ModelSerializer):
+    """Respuesta de /api/verificar/ — endpoint público, sin login (ver
+    authentication_classes en VerificarAsistenciaView). A propósito NO hereda de
+    PostulanteSerializer: ese trae foto/teléfono/correo/fecha de nacimiento/género/
+    estatura, datos personales que no hace falta exponer a quien sea que le mande
+    una foto al endpoint — el kiosco de verificación solo muestra nombre y apellido
+    en pantalla (ver verificar.html)."""
+
+    class Meta:
+        model = Postulante
+        fields = ["id", "nombres", "apellidos"]
+        read_only_fields = fields
+
+
 class FotoPostulanteSerializer(serializers.ModelSerializer):
     class Meta:
         model = FotoPostulante
