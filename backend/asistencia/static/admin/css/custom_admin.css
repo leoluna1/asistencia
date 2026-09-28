@@ -66,6 +66,18 @@ body,
   font-family: 'Archivo', 'Segoe UI', Arial, sans-serif;
 }
 
+/* input/select/textarea/button no heredan font-family del body por defecto
+   (comportamiento estándar del navegador para form controls) — sin esto se
+   quedan con la fuente del sistema mientras el resto de la página usa Archivo.
+   !important porque el propio base.css de Django tiene selectores más
+   específicos (ej. ".submit-row input") para estos mismos elementos. */
+input,
+textarea,
+select,
+button {
+  font-family: 'Archivo', 'Segoe UI', Arial, sans-serif !important;
+}
+
 #branding h1 {
   font-weight: 700;
   letter-spacing: 0.01em;
