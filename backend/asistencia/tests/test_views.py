@@ -19,6 +19,7 @@ from rest_framework.test import APITestCase
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import AccessToken
 
+from asistencia import pool
 from asistencia.facial import get_embedding
 from asistencia.models import Asistencia, Postulante
 
@@ -387,6 +388,10 @@ class VerificarAsistenciaViewTest(APITestCase):
     url = "/api/verificar/"
 
     def setUp(self):
+        # El pool de embeddings (ver pool.py) vive en memoria del proceso, no en
+        # la transacción del test: sin esto arrastra ids de postulantes creados
+        # en un test anterior que el rollback ya borró.
+        pool.invalidar()
         self.postulante = Postulante.objects.create(
             nombres="Juan",
             apellidos="Pérez",
@@ -896,6 +901,46 @@ class ExportarAsistenciasViewTest(APITestCase):
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertTrue(response.content.startswith(b"%PDF"))
 
+    def _segunda_asistencia(self):
+        otro = Postulante.objects.create(
+            nombres="Luis", apellidos="Diaz", cedula="1719141770",
+            estatura_cm=180, sede="Quito", foto=_foto("rostro_real.jpg", "z.jpg"),
+        )
+        return Asistencia.objects.create(postulante=otro, sede="Quito")
+
+    @patch("asistencia.views.MAX_FILAS_PDF", 1)
+    def test_pdf_rechaza_una_exportacion_demasiado_grande(self):
+        # Medido el 2026-09-28 con 20.004 asistencias: el PDF tardaba 500 s y
+        # usaba 1,8 GB de RAM — en producción el proxy corta a los 30-60 s y el
+        # worker queda quemando memoria. Mejor un 400 que explique qué hacer.
+        self._segunda_asistencia()
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"formato": "pdf"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mensaje = str(response.data)
+        self.assertIn("CSV", mensaje)  # le dice al agente por dónde salir
+        self.assertIn("2", mensaje)  # cuántas filas tiene el filtro actual
+
+    @patch("asistencia.views.MAX_FILAS_PDF", 1)
+    def test_el_limite_del_pdf_no_afecta_al_csv(self):
+        # El CSV es justamente la salida para el volumen completo (1,6 s y
+        # 1,8 MB con 20.004 filas) — el límite es solo del PDF.
+        self._segunda_asistencia()
+        self.client.force_authenticate(self.agente)
+
+        response = self.client.get(self.url, {"formato": "csv"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        lineas = [l for l in response.content.decode("utf-8-sig").strip().split("\r\n") if l]
+        self.assertEqual(len(lineas), 3)  # encabezado + 2 filas
+
+    @patch("asistencia.views.MAX_FILAS_PDF", 1)
+    def test_pdf_dentro_del_limite_se_exporta_igual(self):
+        self.client.force_authenticate(self.agente)
+        response = self.client.get(self.url, {"formato": "pdf"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
     def test_exporta_respetando_filtros(self):
         otro = Postulante.objects.create(
             nombres="Luis", apellidos="Diaz", cedula="2222222222",
@@ -1080,4 +1125,15 @@ class ThrottlingTest(APITestCase):
         with patch.dict(ScopedRateThrottle.THROTTLE_RATES, {"verificar": "1/min"}):
             self.client.post("/api/verificar/", {})
             respuesta = self.client.post("/api/verificar/", {})
+        self.assertEqual(respuesta.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_el_sondeo_de_encuadre_tiene_su_propio_cupo(self):
+        # Polea cada ~900ms por puesto de registro: si cayera en el piso global
+        # `anon` (120/min), dos puestos detrás de la misma IP lo agotan y la
+        # auto-captura se apaga sin avisar (camera-capture.ts ignora el error).
+        with patch.dict(
+            ScopedRateThrottle.THROTTLE_RATES, {"encuadre": "1/min", "anon": "1000/min"}
+        ):
+            self.client.post("/api/postulantes/probar-encuadre/", {})
+            respuesta = self.client.post("/api/postulantes/probar-encuadre/", {})
         self.assertEqual(respuesta.status_code, status.HTTP_429_TOO_MANY_REQUESTS)

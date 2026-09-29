@@ -22,13 +22,13 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from . import pool
 from .facial import (
     UMBRAL_COINCIDENCIA,
     RostroNoDetectado,
     calcular_embedding,
     detectar_rostro,
     es_rostro_real,
-    mejor_coincidencia,
     validar_calidad_registro,
 )
 from .models import Asistencia, FotoPostulante, Postulante
@@ -155,6 +155,7 @@ class RegistroPostulanteView(generics.CreateAPIView):
                 is_active=False,
             )
         postulante_guardado = serializer.save(embedding=embedding, usuario=usuario)
+        pool.invalidar()  # hay un rostro nuevo que el 1:N tiene que poder encontrar
         if cuenta_nueva:
             _generar_y_enviar_codigo_verificacion(postulante_guardado)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -171,6 +172,7 @@ class RegistroPostulanteView(generics.CreateAPIView):
             is_active=False,
         )
         postulante = serializer.save(embedding=embedding, usuario=usuario)
+        pool.invalidar()  # hay un rostro nuevo que el 1:N tiene que poder encontrar
         _generar_y_enviar_codigo_verificacion(postulante)
 
 
@@ -183,6 +185,11 @@ class ProbarEncuadreView(APIView):
 
     # Público (ver nota en RegistroPostulanteView: evita 401 por un token viejo).
     authentication_classes = []
+    # Scope propio y generoso (ver settings.py): esto polea cada ~900ms por
+    # puesto de registro, así que con el piso global anon de 120/min dos puestos
+    # detrás de la misma IP ya lo agotaban y la auto-captura se apagaba sola.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "encuadre"
 
     def post(self, request):
         foto = request.FILES.get("foto")
@@ -292,6 +299,7 @@ class AgregarFotoPostulanteView(generics.CreateAPIView):
             raise PermissionDenied("No puedes agregar fotos a otro postulante.")
         embedding = _procesar_foto_de_registro(self.request.FILES["foto"])
         serializer.save(postulante=postulante, embedding=embedding)
+        pool.invalidar()  # un ángulo más para el 1:N de este postulante
 
 
 class MiPostulanteView(generics.RetrieveUpdateAPIView):
@@ -352,13 +360,24 @@ class VerificarAsistenciaView(APIView):
 
         embedding_consulta = calcular_embedding(imagen_bgr, rostro)
 
-        # Candidatos: la foto principal de cada postulante + cualquier ángulo adicional
-        # (FotoPostulante) — mejor_coincidencia ya trabaja sobre una lista plana de
-        # (id, embedding), no necesita saber que dos filas son la misma persona.
-        candidatos = list(
-            Postulante.objects.exclude(embedding__isnull=True).values_list("id", "embedding")
-        ) + list(FotoPostulante.objects.values_list("postulante_id", "embedding"))
-        resultado = mejor_coincidencia(embedding_consulta, candidatos)
+        # Candidatos desde el pool en memoria (ver pool.py): la foto principal de
+        # cada postulante + cualquier ángulo adicional, en una matriz ya
+        # normalizada. Antes esto releía los 20 MB de embeddings desde Postgres
+        # en CADA verificación (875 ms de los 1,1 s totales, medido con 20.005
+        # postulantes) para comparar contra datos que casi nunca cambian.
+        ids, matriz = pool.obtener()
+        resultado = pool.mejor_coincidencia_en_pool(embedding_consulta, ids, matriz)
+
+        # Red de seguridad contra un pool desactualizado: si no hay coincidencia,
+        # puede ser alguien que se registró recién (en otro worker, que no vio
+        # nuestro invalidar()) — se relee y se reintenta UNA vez antes de
+        # rechazarlo. Un "sin coincidencia" real paga esa relectura, pero es el
+        # caso raro y de ahí se pasa al override manual del agente igual.
+        if (
+            resultado is None or resultado[1] < UMBRAL_COINCIDENCIA
+        ) and pool.edad_segundos() > 2:
+            ids, matriz = pool.obtener(forzar=True)
+            resultado = pool.mejor_coincidencia_en_pool(embedding_consulta, ids, matriz)
 
         if resultado is None or resultado[1] < UMBRAL_COINCIDENCIA:
             return Response(
@@ -370,7 +389,18 @@ class VerificarAsistenciaView(APIView):
             )
 
         postulante_id, confianza = resultado
-        postulante = Postulante.objects.get(id=postulante_id)
+        postulante = Postulante.objects.filter(id=postulante_id).first()
+        if postulante is None:
+            # El pool puede tener hasta SEGUNDOS_FRESCURA de atraso: si un agente
+            # borró ese registro (ej. un duplicado) en el medio, el id ya no
+            # existe. Se relee y se reintenta una vez; sin esto la verificación
+            # tiraba un 500 en vez de seguir atendiendo a la fila.
+            ids, matriz = pool.obtener(forzar=True)
+            resultado = pool.mejor_coincidencia_en_pool(embedding_consulta, ids, matriz)
+            if resultado is None or resultado[1] < UMBRAL_COINCIDENCIA:
+                return Response({"verificado": False, "motivo": "sin_coincidencia"})
+            postulante_id, confianza = resultado
+            postulante = get_object_or_404(Postulante, id=postulante_id)
 
         # Registro único de asistencia (decisión confirmada): si ya existía, no se duplica,
         # solo se informa que ya estaba marcada.
@@ -522,9 +552,20 @@ def _celda_csv_segura(valor):
     return valor
 
 
+# Tope de filas del PDF. Medido el 2026-09-28 con datos de prueba al volumen
+# real de la convocatoria: weasyprint tarda ~4,8 ms por fila hasta unas 2.000
+# (9,7 s), pero a 20.004 filas se degrada a 25 ms/fila — 500 s y 1,8 GB de RAM.
+# Eso en producción no termina nunca: el proxy corta la request a los 30-60 s y
+# el worker se queda quemando memoria, dejando sin atender a los puestos de
+# verificación. Un PDF de 20.000 filas son ~400 páginas que nadie lee: para el
+# volumen completo está el CSV, que sale en 1,6 s.
+MAX_FILAS_PDF = 2000
+
+
 class ExportarAsistenciasView(APIView):
     """Exporta TODAS las filas que matchean los filtros (no solo la página actual
-    del dashboard) en CSV o PDF — mismos filtros que ListaAsistenciasView."""
+    del dashboard) en CSV o PDF — mismos filtros que ListaAsistenciasView.
+    El PDF está topado en MAX_FILAS_PDF filas; el CSV no tiene límite."""
 
     permission_classes = [IsAdminUser]
 
@@ -540,6 +581,18 @@ class ExportarAsistenciasView(APIView):
 
         if formato == "csv":
             return self._csv(queryset)
+
+        total = queryset.count()
+        if total > MAX_FILAS_PDF:
+            raise ValidationError(
+                {
+                    "formato": (
+                        f"El PDF está limitado a {MAX_FILAS_PDF} filas y el filtro "
+                        f"actual tiene {total}. Acotá por fecha, método o búsqueda, "
+                        f"o exportá en CSV, que no tiene límite."
+                    )
+                }
+            )
         return self._pdf(queryset)
 
     def _csv(self, queryset):
