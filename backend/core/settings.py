@@ -231,7 +231,21 @@ REST_FRAMEWORK = {
         'anon': '120/min',
         'user': '300/min',
         'login': '10/min',
-        'verificar': '30/min',
+        # OJO: el throttle es POR IP, y todos los puestos de una misma sede salen
+        # por la misma IP pública (NAT). Medido el 2026-09-28: con 30/min, la
+        # verificación 31 del minuto ya devuelve 429 — o sea que dos puestos
+        # trabajando normal empiezan a rebotar postulantes legítimos, que tras 3
+        # intentos fallidos caen al override manual y saturan a los agentes.
+        # 300/min soporta ~10 puestos a 4 personas/min con 3 intentos cada una;
+        # para "pescar" identidades en el 1:N igual harían falta horas de
+        # martilleo con miles de fotos de rostros distintos.
+        'verificar': '300/min',
+        # El sondeo de encuadre polea cada ~900ms mientras la persona se acomoda
+        # (66/min por puesto de registro): con el piso anon de 120/min, dos
+        # puestos ya lo agotaban y la auto-captura dejaba de funcionar en
+        # silencio (camera-capture.ts ignora los errores del sondeo). No guarda
+        # nada ni expone datos: puede ser generoso.
+        'encuadre': '600/min',
         # Código de 6 dígitos: sin esto, fuerza bruta contra 1M combinaciones es
         # viable. reenviar-codigo más estricto todavía — también evita usarlo de
         # spam de correo hacia un tercero (solo hace falta la cédula).
