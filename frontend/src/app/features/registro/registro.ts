@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -21,6 +21,7 @@ import { cedulaEcuatorianaValida, soloDigitos } from '../../core/validators';
   standalone: true,
   imports: [
     FormsModule,
+    RouterLink,
     MatButtonModule,
     MatCardModule,
     MatDatepickerModule,
@@ -63,6 +64,7 @@ export class Registro {
   readonly fotoPreview = signal<string | null>(null);
   readonly enviando = signal(false);
   readonly error = signal<string | null>(null);
+  readonly errorEsCuentaDuplicada = signal(false);
 
   codigoIngresado = '';
   readonly verificando = signal(false);
@@ -133,6 +135,7 @@ export class Registro {
     this.foto.set(null);
     this.fotoPreview.set(null);
     this.error.set(null);
+    this.errorEsCuentaDuplicada.set(false);
   }
 
   get formCompleto(): boolean {
@@ -158,6 +161,10 @@ export class Registro {
       });
     } catch (e: any) {
       this.error.set(primerMensajeDeError(e?.error) || 'No se pudo registrar al postulante.');
+      // Se mira la presencia del campo puntual en el error (no el texto del
+      // mensaje, frágil): "¿ya tenés cuenta?" solo aplica cuando el motivo del
+      // rechazo es justo una cédula o un correo ya registrados.
+      this.errorEsCuentaDuplicada.set(!!(e?.error?.cedula || e?.error?.correo));
       return;
     } finally {
       this.enviando.set(false);

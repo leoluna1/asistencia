@@ -115,6 +115,9 @@
       @if (error()) {
         <app-mensaje tipo="error">{{ error() }}</app-mensaje>
       }
+      @if (errorEsCuentaDuplicada()) {
+        <a routerLink="/recuperar">¿Ya tenés cuenta? Recuperar cuenta</a>
+      }
 
       <button
         mat-flat-button
