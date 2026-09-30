@@ -87,13 +87,15 @@ class RegistroPostulanteViewTest(APITestCase):
         self.assertIn("foto", response.data)
         self.assertEqual(Postulante.objects.count(), 0)
 
-    def test_cedula_duplicada_es_rechazada(self):
+    def test_cedula_duplicada_da_el_mismo_mensaje_en_ambos_caminos(self):
         self.client.post(self.url, self._datos(), format="multipart")
         response = self.client.post(
             self.url, self._datos(foto=_foto("rostro_real.jpg")), format="multipart"
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("cedula", response.data)
+        self.assertEqual(
+            response.data["cedula"][0], "Ya existe un postulante con esta cédula."
+        )
 
     def test_completa_un_postulante_precargado_por_csv_en_vez_de_rechazarlo(self):
         precargado = Postulante.objects.create(

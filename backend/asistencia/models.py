@@ -14,7 +14,10 @@ class Postulante(models.Model):
     nombres = models.CharField(max_length=150)
     apellidos = models.CharField(max_length=150)
     cedula = models.CharField(
-        max_length=10, unique=True, validators=[validar_cedula_ecuatoriana]
+        max_length=10,
+        unique=True,
+        validators=[validar_cedula_ecuatoriana],
+        error_messages={"unique": "Ya existe un postulante con esta cédula."},
     )
     estatura_cm = models.PositiveSmallIntegerField()
     # blank/null en estos cuatro: permite precargar el postulante por CSV (carga masiva,
