@@ -97,6 +97,35 @@ class RegistroPostulanteViewTest(APITestCase):
             response.data["cedula"][0], "Ya existe un postulante con esta cédula."
         )
 
+    def test_correo_duplicado_es_rechazado(self):
+        self.client.post(self.url, self._datos(), format="multipart")
+        response = self.client.post(
+            self.url,
+            self._datos(cedula="0401843263", foto=_foto("rostro_real.jpg")),
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["correo"][0], "Ya existe un postulante con este correo."
+        )
+
+    def test_dos_registros_simultaneos_con_mismo_correo_da_400_no_500(self):
+        # Mismo mecanismo que test_dos_registros_simultaneos_con_misma_cedula_da_400_no_500
+        # (arriba), pero forzando la carrera contra el constraint de correo, no el
+        # de cédula -- confirma que el except IntegrityError los distingue.
+        self.client.post(self.url, self._datos(), format="multipart")
+        with patch("rest_framework.validators.UniqueValidator.__call__", return_value=None):
+            response = self.client.post(
+                self.url,
+                self._datos(cedula="0401843263", foto=_foto("rostro_real.jpg")),
+                format="multipart",
+            )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("correo", response.data)
+        self.assertEqual(
+            Postulante.objects.filter(correo="juan.perez@example.com").count(), 1
+        )
+
     def test_completa_un_postulante_precargado_por_csv_en_vez_de_rechazarlo(self):
         precargado = Postulante.objects.create(
             nombres="Juan", apellidos="Pérez", cedula="1710034065",

@@ -119,13 +119,17 @@ class RegistroPostulanteView(generics.CreateAPIView):
         try:
             with transaction.atomic():
                 return super().create(request, *args, **kwargs)
-        except IntegrityError:
-            # Dos registros casi simultáneos con la misma cédula nueva (ej. doble
-            # envío por conexión inestable en el kiosco) pueden pasar ambos la
-            # validación del serializer (el UniqueValidator consulta la BD antes de
-            # que ninguno haga commit) — el segundo INSERT choca acá. Se traduce al
-            # mismo 400 que ya devuelve una cédula duplicada detectada a tiempo, en
-            # vez de un 500 sin capturar.
+        except IntegrityError as error:
+            # Dos registros casi simultáneos con la misma cédula O el mismo correo
+            # nuevos (ej. doble envío por conexión inestable en el kiosco) pueden
+            # pasar ambos la validación del serializer (el UniqueValidator consulta
+            # la BD antes de que ninguno haga commit) — el segundo INSERT choca acá.
+            # Se distingue por el nombre real de la restricción que violó Postgres
+            # (psycopg2 lo expone en error.__cause__.diag), no por texto libre del
+            # mensaje, para devolver el campo correcto en vez de asumir "cédula".
+            constraint = getattr(getattr(error.__cause__, "diag", None), "constraint_name", "") or ""
+            if "correo" in constraint:
+                raise ValidationError({"correo": "Ya existe un postulante con este correo."})
             raise ValidationError({"cedula": "Ya existe un postulante con esta cédula."})
 
     def _completar_precarga(self, postulante, request):

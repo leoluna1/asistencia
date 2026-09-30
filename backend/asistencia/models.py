@@ -26,7 +26,12 @@ class Postulante(models.Model):
     # misma cédula. La API sí los exige en un alta nueva (ver PostulanteSerializer).
     fecha_nacimiento = models.DateField(null=True, blank=True)
     telefono = models.CharField(max_length=20, null=True, blank=True)
-    correo = models.EmailField(null=True, blank=True)
+    correo = models.EmailField(
+        null=True,
+        blank=True,
+        unique=True,
+        error_messages={"unique": "Ya existe un postulante con este correo."},
+    )
     genero = models.CharField(max_length=10, choices=Genero.choices, null=True, blank=True)
     # blank/null: mismo motivo que los anteriores — llega vacía en la precarga por CSV.
     foto = models.ImageField(upload_to="postulantes/", blank=True, null=True)
