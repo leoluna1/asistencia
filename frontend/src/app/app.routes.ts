@@ -20,6 +20,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/login/login').then((m) => m.Login)
   },
   {
+    path: 'recuperar',
+    loadComponent: () => import('./features/recuperar/recuperar').then((m) => m.Recuperar)
+  },
+  {
     path: 'dashboard',
     canActivate: [adminGuard],
     loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard)

@@ -1,0 +1,82 @@
+<div class="pantalla">
+  <mat-card appearance="outlined" class="tarjeta">
+    <h2>Recuperar cuenta</h2>
+
+    @if (exito()) {
+      <app-mensaje tipo="ok">
+        Contraseña restablecida. Ya podés ingresar con tu contraseña nueva.
+      </app-mensaje>
+      <button mat-flat-button color="primary" (click)="irALogin()">Ir a ingresar</button>
+    } @else if (paso() === 'cedula') {
+      <p class="requisito">Ingresá tu cédula para recibir un código por correo.</p>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Cédula</mat-label>
+        <input
+          matInput
+          required
+          inputmode="numeric"
+          [value]="cedula"
+          (input)="onCedulaInput($event)"
+          (keyup.enter)="solicitarCodigo()"
+        />
+        <mat-hint>10 dígitos, sin espacios ni guiones.</mat-hint>
+      </mat-form-field>
+
+      @if (error()) {
+        <app-mensaje tipo="error">{{ error() }}</app-mensaje>
+      }
+
+      <button
+        mat-flat-button
+        color="primary"
+        [disabled]="cedula.length !== 10 || enviando()"
+        (click)="solicitarCodigo()"
+      >
+        @if (enviando()) {
+          <mat-progress-spinner diameter="18" mode="indeterminate" />
+        } @else {
+          Enviar código
+        }
+      </button>
+
+      <a routerLink="/login">Volver a ingresar</a>
+    } @else {
+      <p class="requisito">Ingresá el código de 6 dígitos y tu contraseña nueva.</p>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Código</mat-label>
+        <input matInput required inputmode="numeric" maxlength="6" [(ngModel)]="codigo" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Contraseña nueva</mat-label>
+        <input
+          matInput
+          required
+          type="password"
+          [(ngModel)]="passwordNueva"
+          (keyup.enter)="restablecer()"
+        />
+        <mat-hint>Mínimo 8 caracteres.</mat-hint>
+      </mat-form-field>
+
+      @if (errorCodigo()) {
+        <app-mensaje tipo="error">{{ errorCodigo() }}</app-mensaje>
+      }
+
+      <button
+        mat-flat-button
+        color="primary"
+        [disabled]="!codigo || passwordNueva.length < 8 || restableciendo()"
+        (click)="restablecer()"
+      >
+        @if (restableciendo()) {
+          <mat-progress-spinner diameter="18" mode="indeterminate" />
+        } @else {
+          Restablecer
+        }
+      </button>
+    }
+  </mat-card>
+</div>

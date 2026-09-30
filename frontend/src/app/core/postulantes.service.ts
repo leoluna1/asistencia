@@ -81,4 +81,20 @@ export class PostulantesService {
       this.http.post<void>(`${API_BASE_URL}/postulantes/reenviar-codigo/`, { cedula })
     );
   }
+
+  solicitarRecuperacion(cedula: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${API_BASE_URL}/postulantes/solicitar-recuperacion/`, { cedula })
+    );
+  }
+
+  restablecerPassword(cedula: string, codigo: string, passwordNueva: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${API_BASE_URL}/postulantes/restablecer-password/`, {
+        cedula,
+        codigo,
+        password_nueva: passwordNueva
+      })
+    );
+  }
 }
