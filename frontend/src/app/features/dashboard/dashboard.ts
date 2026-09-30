@@ -11,7 +11,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { AsistenciaService } from '../../core/asistencia.service';
 import { AuthService } from '../../core/auth.service';
-import { primerMensajeDeError } from '../../core/errores';
+import { mensajeDeErrorDeBlob, primerMensajeDeError } from '../../core/errores';
 import { FilaAsistencia, FiltrosAsistencia } from '../../core/models';
 import { PNE_CHART_SCHEME, porHoraAGrafico, porMetodoAGrafico, porSedeAGrafico } from '../../core/resumen-charts';
 import { InlineMessage } from '../../shared/inline-message/inline-message';
@@ -146,8 +146,13 @@ export class Dashboard implements OnInit, OnDestroy {
     try {
       const blob = await this.asistencia.exportar(formato, this.filtrosActuales);
       this.descargarBlob(blob, `asistencias.${formato}`);
-    } catch {
-      this.errorExportar.set('No se pudo generar el archivo.');
+    } catch (e: any) {
+      // El backend explica qué hacer cuando rechaza (ej. el PDF pasado de
+      // filas: acotar filtros o usar CSV), pero al pedir un blob ese mensaje
+      // llega como Blob y hay que leerlo.
+      this.errorExportar.set(
+        (await mensajeDeErrorDeBlob(e?.error)) || 'No se pudo generar el archivo.'
+      );
     } finally {
       this.exportando.set(null);
     }
