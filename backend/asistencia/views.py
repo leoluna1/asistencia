@@ -311,6 +311,53 @@ class SolicitarRecuperacionView(APIView):
         return Response({"enviado": True})
 
 
+class RestablecerPasswordView(APIView):
+    """Confirma el código de recuperación y establece la contraseña nueva
+    — ver SolicitarRecuperacionView."""
+
+    authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "restablecer-password"
+
+    def post(self, request):
+        cedula = request.data.get("cedula")
+        codigo = request.data.get("codigo")
+        password_nueva = request.data.get("password_nueva")
+        if not cedula or not codigo or not password_nueva:
+            raise ValidationError(
+                {"codigo": "Cédula, código y contraseña nueva son obligatorios."}
+            )
+        if len(password_nueva) < 8:
+            raise ValidationError(
+                {"password_nueva": "Asegúrese de que este campo tenga al menos 8 caracteres."}
+            )
+
+        try:
+            postulante = Postulante.objects.select_related("usuario").get(cedula=cedula)
+        except Postulante.DoesNotExist:
+            raise ValidationError({"cedula": "No existe un registro con esa cédula."})
+
+        if not postulante.usuario or not postulante.codigo_verificacion:
+            raise ValidationError(
+                {"codigo": "No hay ninguna recuperación pendiente para esta cédula."}
+            )
+
+        vencido = now() - postulante.codigo_generado_en > datetime.timedelta(
+            minutes=MINUTOS_EXPIRACION_CODIGO_VERIFICACION
+        )
+        if vencido:
+            raise ValidationError({"codigo": "El código expiró. Pedí uno nuevo."})
+        if codigo != postulante.codigo_verificacion:
+            raise ValidationError({"codigo": "Código incorrecto."})
+
+        postulante.usuario.set_password(password_nueva)
+        postulante.usuario.save(update_fields=["password"])
+        postulante.codigo_verificacion = None
+        postulante.codigo_generado_en = None
+        postulante.save(update_fields=["codigo_verificacion", "codigo_generado_en"])
+        return Response({"restablecido": True})
+
+
 class AgregarFotoPostulanteView(generics.CreateAPIView):
     """Suma un ángulo adicional de referencia a un postulante ya registrado (ver
     FotoPostulante). El postulante ya tiene su foto principal; esto es opcional,

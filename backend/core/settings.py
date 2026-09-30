@@ -252,5 +252,6 @@ REST_FRAMEWORK = {
         'verificar-correo': '10/min',
         'reenviar-codigo': '5/min',
         'solicitar-recuperacion': '10/min',
+        'restablecer-password': '5/min',
     },
 }

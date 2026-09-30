@@ -428,6 +428,71 @@ class SolicitarRecuperacionViewTest(APITestCase):
         self.assertEqual(len(mail.outbox), 0)
 
 
+class RestablecerPasswordViewTest(APITestCase):
+    url = "/api/postulantes/restablecer-password/"
+
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username="1710034065", password="clave-vieja-123", is_active=True
+        )
+        self.postulante = Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito", correo="juan@example.com",
+            usuario=self.usuario, codigo_verificacion="123456",
+            codigo_generado_en=timezone.now(),
+        )
+
+    def test_codigo_correcto_restablece_la_contrasena(self):
+        response = self.client.post(
+            self.url,
+            {"cedula": "1710034065", "codigo": "123456", "password_nueva": "clave-nueva-456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.postulante.refresh_from_db()
+        self.assertIsNone(self.postulante.codigo_verificacion)
+
+        login = self.client.post(
+            "/api/token/", {"username": "1710034065", "password": "clave-nueva-456"}
+        )
+        self.assertEqual(login.status_code, status.HTTP_200_OK, login.data)
+
+    def test_codigo_incorrecto_no_cambia_la_contrasena(self):
+        response = self.client.post(
+            self.url,
+            {"cedula": "1710034065", "codigo": "000000", "password_nueva": "clave-nueva-456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        login = self.client.post(
+            "/api/token/", {"username": "1710034065", "password": "clave-vieja-123"}
+        )
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+
+    def test_codigo_vencido_no_cambia_la_contrasena(self):
+        self.postulante.codigo_generado_en = timezone.now() - datetime.timedelta(minutes=16)
+        self.postulante.save()
+        response = self.client.post(
+            self.url,
+            {"cedula": "1710034065", "codigo": "123456", "password_nueva": "clave-nueva-456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_password_nueva_corta_es_rechazada_sin_consumir_el_codigo(self):
+        response = self.client.post(
+            self.url,
+            {"cedula": "1710034065", "codigo": "123456", "password_nueva": "corta"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.postulante.refresh_from_db()
+        self.assertEqual(self.postulante.codigo_verificacion, "123456")
+
+    def test_cedula_inexistente_es_error_de_validacion(self):
+        response = self.client.post(
+            self.url,
+            {"cedula": "9999999999", "codigo": "123456", "password_nueva": "clave-nueva-456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 @override_settings(MEDIA_ROOT=MEDIA_TMP)
 class VerificarAsistenciaViewTest(APITestCase):
     url = "/api/verificar/"
