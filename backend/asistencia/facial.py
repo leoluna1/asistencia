@@ -6,6 +6,7 @@ sobre cv2.dnn. Ver docs/00-REFERENCIA-PROYECTO.md para el porqué de esta elecci
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import cv2
@@ -36,6 +37,24 @@ UMBRAL_BRILLO_MINIMO = settings.ASISTENCIA_UMBRAL_BRILLO_MINIMO  # brillo medio 
 _detector = None
 _recognizer = None
 _antispoofing = None
+
+# Los tres modelos son objetos de OpenCV compartidos por todo el proceso y NO son
+# thread-safe: usarlos es siempre "cargar la entrada y después correr la red"
+# (`setInputSize()`+`detect()`, `setInput()`+`forward()`), dos pasos con estado
+# que dos hilos se pisan entre sí.
+#
+# Cualquier servidor real atiende requests en paralelo, y el día de la prueba hay
+# varios puestos verificando a la vez contra el mismo backend. Probado el
+# 2026-09-28 con 12 verificaciones simultáneas SIN este lock: 3 respondieron
+# HTTP 500 con "(-215:Assertion failed) buf.shape() == m.shape()" y una quedó
+# colgada para siempre.
+#
+# Serializar el pipeline completo cuesta poco: son 11 ms por persona (5,5 de
+# detección + 0,9 de anti-spoofing + 4,7 de embedding), o sea un techo de ~90
+# verificaciones por segundo, contra las ~0,7/s que salen de repartir 20.000
+# postulantes en una jornada. Si algún día ese techo molestara, el reemplazo es
+# una instancia de los modelos por hilo, no sacar el lock.
+_lock_modelos = threading.Lock()
 
 
 class RostroNoDetectado(Exception):
@@ -87,8 +106,10 @@ def detectar_rostro(image_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         image_bgr = cv2.resize(image_bgr, (int(w * escala), int(h * escala)))
         h, w = image_bgr.shape[:2]
 
-    detector.setInputSize((w, h))
-    _, faces = detector.detect(image_bgr)
+    # setInputSize + detect son un par indivisible: ver _lock_modelos.
+    with _lock_modelos:
+        detector.setInputSize((w, h))
+        _, faces = detector.detect(image_bgr)
     if faces is None or len(faces) == 0:
         raise RostroNoDetectado("No se detectó ningún rostro en la foto")
 
@@ -100,8 +121,9 @@ def detectar_rostro(image_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def calcular_embedding(image_bgr: np.ndarray, rostro: np.ndarray) -> list[float]:
     """Embedding (128 floats) del rostro ya detectado por detectar_rostro."""
     recognizer = _get_recognizer()
-    alineado = recognizer.alignCrop(image_bgr, rostro)
-    embedding = recognizer.feature(alineado)
+    with _lock_modelos:  # ver _lock_modelos: SFace tampoco es thread-safe
+        alineado = recognizer.alignCrop(image_bgr, rostro)
+        embedding = recognizer.feature(alineado)
     return embedding.flatten().tolist()
 
 
@@ -204,8 +226,10 @@ def es_rostro_real(image_bgr: np.ndarray, rostro: np.ndarray) -> tuple[bool, flo
     blob = recorte.astype(np.float32).transpose(2, 0, 1)[np.newaxis, ...]
 
     red = _get_antispoofing()
-    red.setInput(blob)
-    salida = red.forward()[0]
+    # setInput + forward son un par indivisible: ver _lock_modelos.
+    with _lock_modelos:
+        red.setInput(blob)
+        salida = red.forward()[0]
 
     probs = np.exp(salida - np.max(salida))
     probs /= probs.sum()

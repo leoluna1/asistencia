@@ -102,6 +102,45 @@ class ValidarCalidadRegistroTest(SimpleTestCase):
         self.assertIsNotNone(validar_calidad_registro(self.IMAGEN, rostro))
 
 
+class PipelineConcurrenteTest(SimpleTestCase):
+    """El día de la prueba hay varios puestos verificando al mismo tiempo contra
+    el mismo servidor, y cualquier servidor real (runserver, gunicorn con hilos)
+    atiende esas requests en paralelo.
+
+    Los modelos ONNX viven en variables de módulo compartidas y NO son
+    thread-safe: `setInputSize()`/`setInput()` y después `detect()`/`forward()`
+    son dos pasos con estado, así que dos hilos se pisan a mitad de camino.
+    Reproducido el 2026-09-28 con 12 verificaciones en paralelo: 3 respondieron
+    HTTP 500 con `(-215:Assertion failed) buf.shape() == m.shape()` y una quedó
+    colgada."""
+
+    IMAGEN = cv2.imread(str(FIXTURES_DIR / "rostro_real.jpg"))
+
+    def test_varias_verificaciones_en_paralelo_no_rompen(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def pipeline_completo(_):
+            imagen, rostro = detectar_rostro(self.IMAGEN.copy())
+            es_rostro_real(imagen, rostro)
+            return calcular_embedding(imagen, rostro)
+
+        with ThreadPoolExecutor(max_workers=8) as pool_hilos:
+            embeddings = list(pool_hilos.map(pipeline_completo, range(24)))
+
+        self.assertEqual(len(embeddings), 24)
+        for embedding in embeddings:
+            self.assertEqual(len(embedding), 128)
+        # Misma foto en todos los hilos: si hubo cruce de estado entre modelos,
+        # los embeddings saldrían distintos aunque no se lance excepción.
+        for embedding in embeddings[1:]:
+            self.assertAlmostEqual(
+                float(np.dot(embedding, embeddings[0]))
+                / (np.linalg.norm(embedding) * np.linalg.norm(embeddings[0])),
+                1.0,
+                places=5,
+            )
+
+
 class MejorCoincidenciaTest(SimpleTestCase):
     def test_sin_candidatos_devuelve_none(self):
         self.assertIsNone(mejor_coincidencia([1.0, 0.0], []))
