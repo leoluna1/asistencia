@@ -383,6 +383,51 @@ class ReenviarCodigoViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+class SolicitarRecuperacionViewTest(APITestCase):
+    url = "/api/postulantes/solicitar-recuperacion/"
+
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username="1710034065", password="clave-vieja-123", is_active=True
+        )
+        self.postulante = Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065",
+            estatura_cm=175, sede="Quito", correo="juan@example.com",
+            usuario=self.usuario,
+        )
+
+    def test_cuenta_activa_recibe_un_codigo_por_correo(self):
+        response = self.client.post(self.url, {"cedula": "1710034065"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.postulante.refresh_from_db()
+        self.assertIsNotNone(self.postulante.codigo_verificacion)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["juan@example.com"])
+
+    def test_cuenta_inactiva_no_recibe_codigo_y_avisa_verificar_primero(self):
+        self.usuario.is_active = False
+        self.usuario.save()
+        response = self.client.post(self.url, {"cedula": "1710034065"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("verificó su correo", response.data["cedula"])
+        self.postulante.refresh_from_db()
+        self.assertIsNone(self.postulante.codigo_verificacion)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_cedula_inexistente_es_error_de_validacion(self):
+        response = self.client.post(self.url, {"cedula": "9999999999"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_postulante_precargado_sin_cuenta_es_error_de_validacion(self):
+        Postulante.objects.create(
+            nombres="Ana", apellidos="Lopez", cedula="0401843263", estatura_cm=160,
+        )
+        response = self.client.post(self.url, {"cedula": "0401843263"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(len(mail.outbox), 0)
+
+
 @override_settings(MEDIA_ROOT=MEDIA_TMP)
 class VerificarAsistenciaViewTest(APITestCase):
     url = "/api/verificar/"

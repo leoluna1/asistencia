@@ -251,5 +251,6 @@ REST_FRAMEWORK = {
         # spam de correo hacia un tercero (solo hace falta la cédula).
         'verificar-correo': '10/min',
         'reenviar-codigo': '5/min',
+        'solicitar-recuperacion': '10/min',
     },
 }

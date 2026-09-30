@@ -277,6 +277,40 @@ class ReenviarCodigoView(APIView):
         return Response({"reenviado": True})
 
 
+class SolicitarRecuperacionView(APIView):
+    """Pide un código de recuperación de contraseña por correo — solo para
+    cuentas ya activas. Reusa el mismo codigo_verificacion/codigo_generado_en
+    que usa la verificación de correo del registro (ver VerificarCorreoView):
+    son mutuamente excluyentes (verificación = cuenta inactiva, recuperación
+    = cuenta activa), nunca compiten por el campo al mismo tiempo."""
+
+    authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "solicitar-recuperacion"
+
+    def post(self, request):
+        cedula = request.data.get("cedula")
+        if not cedula:
+            raise ValidationError({"cedula": "Este campo es obligatorio."})
+
+        try:
+            postulante = Postulante.objects.select_related("usuario").get(cedula=cedula)
+        except Postulante.DoesNotExist:
+            raise ValidationError({"cedula": "No existe un registro con esa cédula."})
+        if not postulante.usuario:
+            raise ValidationError({"cedula": "No hay ningún registro pendiente para esta cédula."})
+        if not postulante.usuario.is_active:
+            raise ValidationError(
+                {
+                    "cedula": "Esta cuenta todavía no verificó su correo. Pedí que te "
+                    "reenvíen el código de verificación en vez de recuperar la contraseña."
+                }
+            )
+
+        _generar_y_enviar_codigo_verificacion(postulante)
+        return Response({"enviado": True})
+
+
 class AgregarFotoPostulanteView(generics.CreateAPIView):
     """Suma un ángulo adicional de referencia a un postulante ya registrado (ver
     FotoPostulante). El postulante ya tiene su foto principal; esto es opcional,
