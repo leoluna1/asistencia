@@ -38,6 +38,8 @@ export class Recuperar {
   readonly restableciendo = signal(false);
   readonly errorCodigo = signal<string | null>(null);
   readonly exito = signal(false);
+  readonly reenviando = signal(false);
+  readonly codigoReenviado = signal(false);
 
   constructor(
     private postulantes: PostulantesService,
@@ -77,6 +79,20 @@ export class Recuperar {
       );
     } finally {
       this.restableciendo.set(false);
+    }
+  }
+
+  async reenviarCodigo(): Promise<void> {
+    this.reenviando.set(true);
+    this.errorCodigo.set(null);
+    this.codigoReenviado.set(false);
+    try {
+      await this.postulantes.reenviarCodigo(this.cedula);
+      this.codigoReenviado.set(true);
+    } catch (e: any) {
+      this.errorCodigo.set(primerMensajeDeError(e?.error) || 'No se pudo reenviar el código.');
+    } finally {
+      this.reenviando.set(false);
     }
   }
 

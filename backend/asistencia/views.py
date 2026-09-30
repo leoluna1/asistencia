@@ -1,6 +1,6 @@
 import csv
 import datetime
-import random
+import secrets
 
 import cv2
 import numpy as np
@@ -74,10 +74,13 @@ MINUTOS_EXPIRACION_CODIGO_VERIFICACION = 15
 
 
 def _generar_y_enviar_codigo_verificacion(postulante):
-    """Genera un código de 6 dígitos y lo manda al correo del postulante (ver
-    VerificarCorreoView) — se llama solo cuando se crea la cuenta (is_active=False
-    hasta verificar), nunca al reusar una ya verificada."""
-    codigo = f"{random.randint(0, 999999):06d}"
+    """Genera un código de 6 dígitos y lo manda al correo del postulante — se usa
+    tanto para activar una cuenta nueva (ver VerificarCorreoView, is_active=False
+    hasta verificar) como para recuperar la contraseña de una ya activa (ver
+    SolicitarRecuperacionView); nunca las dos cosas a la vez para la misma cuenta.
+    secrets.randbelow (CSPRNG), no random.randint: el código ahora también protege
+    un reset de contraseña, no solo una activación."""
+    codigo = f"{secrets.randbelow(1_000_000):06d}"
     postulante.codigo_verificacion = codigo
     postulante.codigo_generado_en = now()
     postulante.save(update_fields=["codigo_verificacion", "codigo_generado_en"])
@@ -310,6 +313,15 @@ class SolicitarRecuperacionView(APIView):
                     "reenvíen el código de verificación en vez de recuperar la contraseña."
                 }
             )
+        if not postulante.correo:
+            # No debería pasar para una cuenta activa (el registro exige correo,
+            # ver PostulanteSerializer), pero mi-postulante permite editarlo -- sin
+            # este chequeo, send_mail(..., [None]) es silencioso con el backend de
+            # consola y revienta recién con un proveedor SMTP real, después de ya
+            # haber devuelto {"enviado": true}.
+            raise ValidationError(
+                {"cedula": "Esta cuenta no tiene un correo registrado para mandar el código."}
+            )
 
         _generar_y_enviar_codigo_verificacion(postulante)
         return Response({"enviado": True})
@@ -344,6 +356,17 @@ class RestablecerPasswordView(APIView):
         if not postulante.usuario or not postulante.codigo_verificacion:
             raise ValidationError(
                 {"codigo": "No hay ninguna recuperación pendiente para esta cédula."}
+            )
+        if not postulante.usuario.is_active:
+            # Esta cuenta todavía no verificó su correo -- el código pendiente es
+            # el de activación (ver VerificarCorreoView), no uno de recuperación.
+            # Sin este chequeo, restablecer acá consumía ese código sin activar la
+            # cuenta, dejando a la persona sin poder ni verificar ni loguear.
+            raise ValidationError(
+                {
+                    "codigo": "Esta cuenta todavía no verificó su correo. Pedí que te "
+                    "reenvíen el código de verificación en vez de recuperar la contraseña."
+                }
             )
 
         vencido = now() - postulante.codigo_generado_en > datetime.timedelta(

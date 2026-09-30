@@ -166,6 +166,20 @@ mat-card.tarjeta {
   border-color: var(--pne-borde-acento);
 }
 
+// Links sueltos dentro de una tarjeta (ej. "¿Olvidaste tu contraseña?",
+// "Recuperar cuenta") — sin esto quedan con el azul/subrayado default del
+// navegador, el único lugar de la app con un <a> fuera del nav global
+// (que sí tiene su propio color en el bloque de arriba).
+.enlace-tarjeta {
+  color: var(--pne-navy);
+  font-weight: 500;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 // Botón con estado de carga: reemplaza el texto por un spinner chico mientras
 // dura la request, sin cambiar el tamaño del botón ni el layout alrededor.
 button[mat-flat-button] mat-progress-spinner,

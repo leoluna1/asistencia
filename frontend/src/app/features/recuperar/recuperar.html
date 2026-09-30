@@ -40,7 +40,7 @@
         }
       </button>
 
-      <a routerLink="/login">Volver a ingresar</a>
+      <a class="enlace-tarjeta" routerLink="/login">Volver a ingresar</a>
     } @else {
       <p class="requisito">Ingresá el código de 6 dígitos y tu contraseña nueva.</p>
 
@@ -64,6 +64,9 @@
       @if (errorCodigo()) {
         <app-mensaje tipo="error">{{ errorCodigo() }}</app-mensaje>
       }
+      @if (codigoReenviado()) {
+        <app-mensaje tipo="ok">Te enviamos un código nuevo.</app-mensaje>
+      }
 
       <button
         mat-flat-button
@@ -76,6 +79,9 @@
         } @else {
           Restablecer
         }
+      </button>
+      <button mat-stroked-button type="button" [disabled]="reenviando()" (click)="reenviarCodigo()">
+        Reenviar código
       </button>
     }
   </mat-card>

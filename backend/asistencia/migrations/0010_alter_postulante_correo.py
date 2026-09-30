@@ -3,6 +3,18 @@
 from django.db import migrations, models
 
 
+def _normalizar_correos_vacios_a_null(apps, schema_editor):
+    # Hallazgo de la revisión final: '' y '' colisionan bajo unique=True (a
+    # diferencia de NULL, que Postgres permite repetir) -- si algún entorno
+    # llegó a este punto con dos o más postulantes en correo='' (posible antes
+    # de que el serializer empezara a rechazarlo, ver PostulanteSerializer),
+    # el AlterField de abajo fallaría a mitad de un despliegue. Normalizar
+    # primero deja pasar la migración igual que si esos registros nunca
+    # hubieran tenido un valor.
+    Postulante = apps.get_model('asistencia', 'Postulante')
+    Postulante.objects.filter(correo='').update(correo=None)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +22,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(_normalizar_correos_vacios_a_null, migrations.RunPython.noop),
         migrations.AlterField(
             model_name='postulante',
             name='correo',

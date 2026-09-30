@@ -51,6 +51,18 @@ class PostulanteSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             campo: {"required": True}
             for campo in ("foto", "fecha_nacimiento", "telefono", "correo", "genero")
+        } | {
+            # correo es unique=True a nivel de modelo (ver migración 0010) pero
+            # sigue siendo null=True/blank=True para permitir la precarga por CSV
+            # sin completar -- la API, en cambio, siempre lo exige (igual que los
+            # demás campos de este dict). allow_blank=False solo NO alcanza: con
+            # allow_null=True (heredado de null=True del modelo) DRF convierte ""
+            # en None en vez de rechazarlo ("por motivos históricos", ver
+            # CharField.validate_empty_values) -- sin allow_null=False acá, dos
+            # postulantes mandando correo="" quedaban con correo=None (sin chocar
+            # el unique, pero sin error tampoco, y sin correo real para mandarles
+            # nada, ver SolicitarRecuperacionView).
+            "correo": {"required": True, "allow_blank": False, "allow_null": False},
         }
 
     def validate(self, attrs):

@@ -4,6 +4,7 @@ Usa las mismas fixtures que test_facial.py — ver el docstring de ese archivo
 para su procedencia y licencia.
 """
 import datetime
+import secrets
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -450,6 +451,31 @@ class SolicitarRecuperacionViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(len(mail.outbox), 0)
 
+    def test_cuenta_sin_correo_no_puede_recuperar(self):
+        # Hallazgo de la revisión final: una cuenta activa sin correo (ej. si se
+        # lo borraron editando /api/mi-postulante/, ver el fix de allow_null en
+        # PostulanteSerializer) no debe "enviar" un código a ningún lado -- con
+        # el backend de consola es silencioso, pero con SMTP real reventaría
+        # después de haber prometido un código.
+        self.postulante.correo = None
+        self.postulante.save()
+        response = self.client.post(self.url, {"cedula": "1710034065"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(len(mail.outbox), 0)
+        self.postulante.refresh_from_db()
+        self.assertIsNone(self.postulante.codigo_verificacion)
+
+    def test_codigo_usa_secrets_no_random_no_criptografico(self):
+        # Este código ahora protege un reset de contraseña, no solo la activación
+        # de la cuenta -- debe generarse con un CSPRNG (secrets.randbelow), no con
+        # random.randint (Mersenne Twister, reconstruible tras suficientes muestras).
+        with patch(
+            "asistencia.views.secrets.randbelow", wraps=secrets.randbelow
+        ) as randbelow_mock:
+            response = self.client.post(self.url, {"cedula": "1710034065"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        randbelow_mock.assert_called_once_with(1_000_000)
+
     def test_postulante_precargado_sin_cuenta_es_error_de_validacion(self):
         Postulante.objects.create(
             nombres="Ana", apellidos="Lopez", cedula="0401843263", estatura_cm=160,
@@ -463,6 +489,10 @@ class RestablecerPasswordViewTest(APITestCase):
     url = "/api/postulantes/restablecer-password/"
 
     def setUp(self):
+        # Sin esto, el contador de throttle (127.0.0.1, scope restablecer-password
+        # 5/min) se arrastra entre tests de la misma corrida -- con 6 tests en esta
+        # clase, el sexto POST ya cae en 429 en vez del status esperado.
+        cache.clear()
         self.usuario = User.objects.create_user(
             username="1710034065", password="clave-vieja-123", is_active=True
         )
@@ -472,6 +502,21 @@ class RestablecerPasswordViewTest(APITestCase):
             usuario=self.usuario, codigo_verificacion="123456",
             codigo_generado_en=timezone.now(),
         )
+
+    def test_cuenta_inactiva_no_puede_restablecer(self):
+        # Hallazgo de la revisión final: una cuenta inactiva con un código de
+        # VERIFICACIÓN de registro pendiente (no de recuperación) no debe poder
+        # "restablecer" -- eso consumiría el código de activación sin activar la
+        # cuenta, dejando a la persona sin poder ni verificar ni loguear.
+        self.usuario.is_active = False
+        self.usuario.save()
+        response = self.client.post(
+            self.url,
+            {"cedula": "1710034065", "codigo": "123456", "password_nueva": "clave-nueva-456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.postulante.refresh_from_db()
+        self.assertEqual(self.postulante.codigo_verificacion, "123456")
 
     def test_codigo_correcto_restablece_la_contrasena(self):
         response = self.client.post(
@@ -1154,6 +1199,18 @@ class MiPostulanteViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.postulante.refresh_from_db()
         self.assertEqual(self.postulante.cedula, "1710034065")  # no cambió, es de solo lectura
+
+    def test_no_puede_dejar_el_correo_en_blanco(self):
+        # Hallazgo de la revisión final: correo ya es unique=True (ver migración
+        # 0010) pero blank=True a nivel de modelo seguía dejando pasar "" por acá
+        # -- dos postulantes con correo="" chocaban con un IntegrityError sin
+        # capturar (500). Rechazarlo acá, antes del guardado, es más simple que
+        # traducir el IntegrityError en esta vista también.
+        self.client.force_authenticate(self.usuario)
+        response = self.client.patch(self.url, {"correo": ""})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.postulante.refresh_from_db()
+        self.assertEqual(self.postulante.correo, "juan@example.com")
 
     def test_postulante_no_puede_ver_el_dashboard(self):
         self.client.force_authenticate(self.usuario)
