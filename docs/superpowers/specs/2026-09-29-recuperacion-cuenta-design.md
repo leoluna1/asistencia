@@ -10,11 +10,13 @@ creada en `RegistroPostulanteView`, ver `docs/00-REFERENCIA-PROYECTO.md` y
 `project-asistencia-overview` en memoria) y ya existe un mecanismo de código
 de 6 dígitos por correo para **activar** esa cuenta (`VerificarCorreoView`/
 `ReenviarCodigoView`, commit `a7665c3`). Lo que no existe es una forma de
-recuperarla si el postulante olvida su contraseña — probado en vivo el
-2026-09-29 (ver captura del usuario): el único síntoma visible hoy es un
-formulario de registro que, ante una cédula ya registrada, muestra el
-mensaje genérico de Django ("postulante with this cedula already exists")
-sin guiar a la persona a ningún lado.
+recuperarla si el postulante olvida su contraseña — el usuario lo pidió el
+2026-09-29 después de ver en vivo el flujo de verificación de correo (no la
+duplicidad de cédula en sí, esa parte se describió, no se mostró): hoy un
+formulario de registro que recibe una cédula ya registrada devuelve
+"Ya existe postulante con este cedula." (verificado contra el servidor real
+el mismo día — mensaje traducido automáticamente por Django, sin acento ni
+artículo) sin guiar a la persona a ningún lado.
 
 La cédula **ya está protegida contra duplicados** (`Postulante.cedula` con
 `unique=True` + `validar_cedula_ecuatoriana`) — no es un problema de
@@ -114,14 +116,19 @@ password_nueva}`. Público, throttle scope nuevo `restablecer-password`,
 ### 3. Mensaje de cédula duplicada en el registro (backend)
 
 Hoy, una cédula duplicada en `RegistroPostulanteView.create()` puede llegar
-por dos caminos: el `UniqueValidator` automático de DRF (mensaje default en
-inglés, feo) si el serializer la rechaza antes del INSERT, o el
-`except IntegrityError` ya existente (línea 129 de `views.py`, mensaje
-"Ya existe un postulante con esta cédula.", ya en español). Se homogeniza
-el primer camino agregando `error_messages` al campo `cedula` en
-`PostulanteSerializer` para que ambos casos devuelvan exactamente el mismo
-texto — el frontend (punto 5) no distingue por texto, pero igual conviene
-que un humano leyendo la respuesta vea un mensaje consistente.
+por dos caminos con dos textos distintos (verificado contra el servidor
+real el 2026-09-29): el `UniqueValidator` automático de DRF, que devuelve
+"Ya existe postulante con este cedula." (traducción automática de Django,
+sin acento y sin artículo — no es el error en inglés que se asumió antes de
+verificarlo, pero sigue siendo un texto descuidado) si el serializer la
+rechaza antes del INSERT; o el `except IntegrityError` ya existente (línea
+129 de `views.py`), que devuelve "Ya existe un postulante con esta
+cédula." — mejor redactado, pero un texto distinto para el mismo caso. Se
+homogeniza el primer camino agregando `error_messages={'unique': 'Ya existe
+un postulante con esta cédula.'}` al campo `cedula` en
+`PostulanteSerializer` para que ambos caminos devuelvan exactamente el
+mismo texto — el frontend (punto 6) no distingue por texto, pero igual
+conviene que un humano leyendo la respuesta vea un mensaje consistente.
 
 ### 4. Frontend: nueva página `/recuperar`
 
