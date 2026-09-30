@@ -98,10 +98,14 @@ deliberada; 3.12 es la LTS razonable hoy y Django 4.2 la soporta) con:
   este spec de infra; se deja anotado como mejora futura de bajo riesgo).
 - `pip install -r requirements.txt` + `gunicorn` + `whitenoise` (los dos
   nuevos, ver más abajo).
-- `RUN python manage.py collectstatic --noinput` en build time (necesita
-  `STATIC_ROOT`, que hoy no existe en `settings.py` — se agrega).
-- Entrypoint (`docker-entrypoint.sh`): `python manage.py migrate --noinput`
-  y despues `exec gunicorn core.wsgi:application --bind 0.0.0.0:8000
+- `STATIC_ROOT` (nuevo, no existía en `settings.py` — se agrega).
+- Entrypoint (`docker-entrypoint.sh`): `python manage.py migrate --noinput`,
+  **`python manage.py collectstatic --noinput`** (en el arranque del
+  contenedor, no en build time del Dockerfile — en build no existe `.env`
+  real, `DEBUG` sería `True` por default y el manifest de whitenoise
+  quedaría generado con el storage equivocado; corregido durante la
+  implementación, ver el plan) y despues
+  `exec gunicorn core.wsgi:application --bind 0.0.0.0:8000
   --workers ${GUNICORN_WORKERS:-3} --threads ${GUNICORN_THREADS:-4}
   --worker-class gthread`. `gthread` porque el lock de concurrencia en
   `facial.py` (`bff15c1`) ya está pensado para hilos dentro de un mismo
