@@ -40,9 +40,12 @@ después no exige rediseñar nada de lo que este spec construye).
 2. Un postulante con cuenta **inactiva** (nunca verificó su correo) que
    intenta "recuperar" es dirigido a reenviar el código de verificación
    en su lugar — no se mezclan los dos flujos.
-3. El formulario de registro, ante una cédula ya registrada, ofrece un
-   camino claro ("¿Ya tenés cuenta? Recuperar cuenta") en vez del mensaje
-   genérico actual.
+3. El formulario de registro, ante una cédula **o un correo** ya
+   registrado, ofrece un camino claro ("¿Ya tenés cuenta? Recuperar
+   cuenta") en vez del mensaje genérico actual.
+4. El correo, igual que la cédula, no puede duplicarse entre postulantes
+   (hoy no lo impide nada — ver punto 3.1 del diseño, agregado a pedido
+   del usuario el 2026-09-29 después de aprobar el resto del spec).
 
 ## Fuera de alcance
 
@@ -130,6 +133,57 @@ un postulante con esta cédula.'}` al campo `cedula` en
 mismo texto — el frontend (punto 6) no distingue por texto, pero igual
 conviene que un humano leyendo la respuesta vea un mensaje consistente.
 
+**Corrección tras probar en el shell real**: `error_messages` en
+`extra_kwargs` del serializer NO alcanza — DRF arma el mensaje de
+`UniqueValidator` leyendo `model_field.error_messages['unique']` (ver
+`rest_framework/utils/field_mapping.py::get_unique_error_message`), o sea
+que el `error_messages` tiene que ir en el **campo del modelo**
+(`Postulante.cedula` en `models.py`), no en el serializer. Confirmado que
+así sí cambia el mensaje real que devuelve `UniqueValidator`. Como
+consecuencia también homogeniza el mensaje en cualquier otro lugar que
+valide unicidad de cédula contra el modelo (ej. el admin de Django).
+
+### 3.1. El correo tampoco puede duplicarse (agregado 2026-09-29)
+
+Hoy `Postulante.correo` es `EmailField(null=True, blank=True)` **sin
+`unique=True`** — dos postulantes distintos pueden registrarse con el mismo
+correo sin que nada lo impida. Verificado contra la base real antes de
+tocar nada: 20.005 postulantes con correo, cero duplicados hoy (la carga de
+prueba ya genera uno distinto por cédula,
+`management/commands/cargar_datos_prueba.py:134`), y los `null=True`
+existentes son `NULL` de verdad, no cadena vacía — agregar `unique=True` no
+choca con datos ya cargados.
+
+- `Postulante.correo` pasa a `EmailField(null=True, blank=True,
+  unique=True, error_messages={"unique": "Ya existe un postulante con este
+  correo."})` — mismo patrón que `cedula` (punto 3). `null=True` sigue
+  permitiendo múltiples postulantes precargados por CSV sin correo
+  todavía (Postgres permite múltiples `NULL` en una columna única, no es
+  lo mismo que múltiples `''`).
+- Requiere migración real esta vez (a diferencia de `cedula` en el punto
+  3, que solo cambiaba un mensaje): `python manage.py makemigrations
+  asistencia` agrega el índice único a nivel de base de datos.
+- **`RegistroPostulanteView.create()` — el `except IntegrityError` ya
+  existente (línea 129) asumía que CUALQUIER carrera de INSERT duplicado
+  era por cédula.** Con el correo también único, una carrera de dos
+  registros casi simultáneos con el mismo correo nuevo cae en el mismo
+  `except` pero es un error distinto. Se distingue por el nombre de la
+  restricción que realmente violó Postgres (no por texto libre del
+  mensaje, frágil): `error.__cause__.diag.constraint_name` (atributo
+  estándar de psycopg2 para diagnósticos de una violación de constraint).
+  Postgres nombra los índices únicos simples como
+  `<tabla>_<columna>_key` — confirmado en el mensaje de error real visto
+  hoy contra `cedula` (`asistencia_postulante_cedula_key`), así que el de
+  correo será `asistencia_postulante_correo_key`.
+
+  ```python
+  except IntegrityError as error:
+      constraint = getattr(getattr(error.__cause__, "diag", None), "constraint_name", "") or ""
+      if "correo" in constraint:
+          raise ValidationError({"correo": "Ya existe un postulante con este correo."})
+      raise ValidationError({"cedula": "Ya existe un postulante con esta cédula."})
+  ```
+
 ### 4. Frontend: nueva página `/recuperar`
 
 Mismo patrón de wizard de 2 pasos que ya usa `/registro`
@@ -165,11 +219,13 @@ estilo `routerLink` que ya usa el nav global).
 En `registro.ts`, el catch que hoy hace
 `this.error.set(primerMensajeDeError(e?.error) || 'No se pudo registrar al
 postulante.')` se extiende: si la respuesta trae específicamente
-`e?.error?.cedula` (no cualquier otro campo), además del mensaje se
-muestra un link a `/recuperar` — "¿Ya tenés cuenta con esta cédula?
-Recuperar cuenta". Se mira la presencia del campo `cedula` en el error, no
-el texto del mensaje (parsear texto es frágil y ya se evitó ese patrón en
-`mensajeDeErrorDeBlob`, ver commit `0cd0286`).
+`e?.error?.cedula` **o `e?.error?.correo`** (no cualquier otro campo),
+además del mensaje se muestra un link a `/recuperar` — "¿Ya tenés cuenta?
+Recuperar cuenta". Se mira la presencia de esos dos campos puntuales en el
+error, no el texto del mensaje (parsear texto es frágil y ya se evitó ese
+patrón en `mensajeDeErrorDeBlob`, ver commit `0cd0286`). El link es el
+mismo para los dos casos — `/recuperar` pide la cédula, que la persona
+conoce de memoria aunque el conflicto haya sido por correo.
 
 ## Verificación
 
@@ -183,7 +239,16 @@ el texto del mensaje (parsear texto es frágil y ya se evitó ese patrón en
   con la contraseña nueva (`POST /api/token/` con la nueva contraseña);
   código incorrecto/expirado → rechazado, contraseña vieja sigue
   funcionando.
-- Los 123 tests backend existentes no deben romperse.
+- Tests backend nuevos para la unicidad de correo: registrar dos
+  postulantes con el mismo correo (uno ya registrado, otro nuevo) →
+  rechazado con `error.correo`, mensaje "Ya existe un postulante con este
+  correo."; la carrera simultánea de dos correos nuevos iguales (mismo
+  patrón que `test_dos_registros_simultaneos_con_misma_cedula_da_400_no_500`,
+  parcheando `UniqueValidator` para forzar la ventana de carrera) → 400
+  con `error.correo`, no 500 y no confundido con un error de cédula.
+- Los 123 tests backend existentes no deben romperse (ninguno crea dos
+  postulantes con el mismo correo dentro del mismo test — verificado por
+  búsqueda en el repo antes de escribir este spec).
 - Frontend: `ng test` (17 tests existentes) sigue en verde. Ningún
   componente de feature (`registro`/`login`/`verificar`/`dashboard`/
   `mi-postulante`) tiene `.spec.ts` hoy — solo lo tienen módulos de lógica
