@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -15,6 +15,7 @@ import { InlineMessage } from '../../shared/inline-message/inline-message';
   standalone: true,
   imports: [
     FormsModule,
+    RouterLink,
     MatButtonModule,
     MatCardModule,
     MatFormFieldModule,
