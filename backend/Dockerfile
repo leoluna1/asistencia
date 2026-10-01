@@ -22,7 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 # Los .onnx están en .gitignore: en un clon nuevo no existen. download.sh
 # verifica el sha256 de cada modelo antes de dejarlo en la imagen.
-RUN [ -f asistencia/ml_models/MiniFASNetV2.onnx ] || sh asistencia/ml_models/download.sh
+RUN cd asistencia/ml_models && \
+    { [ -f face_detection_yunet_2023mar.onnx ] && [ -f face_recognition_sface_2021dec.onnx ] \
+      && [ -f MiniFASNetV2.onnx ]; } || sh download.sh
 RUN chmod +x docker-entrypoint.sh
 
 # Sin root: los endpoints públicos le pasan imágenes no confiables a Pillow y

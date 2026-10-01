@@ -47,7 +47,7 @@ y verifica su sha256 (si un modelo cambió upstream, el build falla a propósito
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml ps   # postgres healthy, backend/nginx running
+docker compose -f docker-compose.prod.yml ps   # postgres y backend healthy, nginx running
 ```
 
 En este punto el sitio responde en `http://<ip-del-servidor>/` (HTTP plano,
@@ -132,11 +132,11 @@ Base de datos (cron del host, rota a 7 días dentro del volumen `backups_prod`):
 Fotos (no van en el `pg_dump`; viven en el volumen `media_files`):
 
 ```
-30 3 * * * docker run --rm -v asistencia_media_files:/m:ro -v /root/backups-media:/b alpine tar czf /b/media_$(date +\%Y\%m\%d).tgz -C /m . && find /root/backups-media -name 'media_*.tgz' -mtime +7 -delete
+30 3 * * * docker run --rm -v asistencia-prod_media_files:/m:ro -v /root/backups-media:/b alpine tar czf /b/media_$(date +\%Y\%m\%d).tgz -C /m . && find /root/backups-media -name 'media_*.tgz' -mtime +7 -delete
 ```
 
-(El prefijo `asistencia_` es el nombre de la carpeta del repo; confirmar con
-`docker volume ls`.)
+(El prefijo `asistencia-prod_` es el `name:` de `docker-compose.prod.yml`;
+confirmar con `docker volume ls`.)
 
 Restaurar la base (probado: los dumps llevan `--clean --if-exists`, así que
 se aplican sobre la base existente):

@@ -1,3 +1,7 @@
+# Nombre de proyecto propio: en la misma carpeta que docker-compose.yml (dev),
+# compartían "asistencia" y un `down` de uno se llevaba contenedores del otro.
+name: asistencia-prod
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -28,6 +32,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      # /admin/login/ responde 200 cuando migrate/collectstatic terminaron y
+      # gunicorn atiende (Host localhost: va en DJANGO_ALLOWED_HOSTS).
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/admin/login/', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
   nginx:
