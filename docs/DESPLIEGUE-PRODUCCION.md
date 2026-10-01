@@ -22,15 +22,22 @@ cp .env.production.example .env
 
 Editar `.env` con valores reales:
 - `DJANGO_SECRET_KEY`: generar con
-  `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`. Con
+  `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` (sin `$`:
+  compose interpreta `$VAR` dentro de `.env`; lo mismo para `DB_PASSWORD`). Con
   `DJANGO_DEBUG=False` el backend **no arranca** si tiene menos de 50
   caracteres (protege contra dejar un placeholder).
-- `DJANGO_ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS`: el dominio real una vez
-  apuntado el DNS.
+- `DJANGO_ALLOWED_HOSTS`: para el primer arranque, `localhost,<ip-del-servidor>`
+  (sin esto Django responde 400 "Invalid HTTP_HOST header" a todo `/api` y
+  `/admin`, y parece que el proxy no conecta). El dominio se agrega en la
+  sección 4.
+- `CSRF_TRUSTED_ORIGINS`: el dominio con esquema (`https://...`), en la
+  sección 4.
 - `NUM_PROXIES=1`: ya viene así; no tocar (sin esto, un `X-Forwarded-For`
   falso evade los límites de intentos).
-- `DB_PASSWORD`: una contraseña real, no la de dev.
-- `USE_S3`/`EMAIL_*`: ver sección 7.
+- `DB_PASSWORD`: una contraseña real, no la de dev. Postgres la toma solo en el
+  primer arranque (al crear el volumen): cambiarla después en `.env` no cambia
+  la de la base, y el backend queda en "password authentication failed".
+- `USE_S3`/`EMAIL_*`: ver sección 8.
 
 Los modelos de reconocimiento facial (`.onnx`) no están en git: el build de la
 imagen del backend los descarga con `backend/asistencia/ml_models/download.sh`
@@ -77,7 +84,8 @@ Después:
    redirige a https, reemplazar las ocurrencias de `TU_DOMINIO_AQUI`, y borrar
    el bloque catch-all `server_name _` de arriba.
 2. En `docker-compose.prod.yml`, descomentar el puerto `"443:443"` del
-   servicio `nginx`.
+   servicio `nginx`. En `.env`, agregar el dominio a `DJANGO_ALLOWED_HOSTS` y
+   poner `CSRF_TRUSTED_ORIGINS=https://TU_DOMINIO_AQUI`.
 3. En `.env`, poner `SECURE_SSL_REDIRECT=True`, `SESSION_COOKIE_SECURE=True`,
    `CSRF_COOKIE_SECURE=True`. Una vez comprobado que HTTPS anda, agregar
    `SECURE_HSTS_SECONDS=31536000` (empezar con 3600 un día si hay dudas: HSTS
@@ -130,14 +138,35 @@ Fotos (no van en el `pg_dump`; viven en el volumen `media_files`):
 (El prefijo `asistencia_` es el nombre de la carpeta del repo; confirmar con
 `docker volume ls`.)
 
-Restaurar la base:
+Restaurar la base (probado: los dumps llevan `--clean --if-exists`, así que
+se aplican sobre la base existente):
 
 ```bash
-gunzip -c sc_pne_20260101_030000.sql.gz | \
-    docker exec -i sc-pne-postgres-prod psql -U sc_pne -d sc_pne
+docker compose -f docker-compose.prod.yml stop backend
+docker exec sc-pne-postgres-prod ls -t /backups          # elegir el archivo
+docker exec sc-pne-postgres-prod sh -c \
+    'gunzip -c /backups/sc_pne_AAAAMMDD_HHMMSS.sql.gz | psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+docker compose -f docker-compose.prod.yml start backend
 ```
 
-## 7. Pendientes antes de operar con postulantes reales
+`ON_ERROR_STOP=1` hace que un error corte la restauración en vez de dejarla a
+medias sin avisar. Los backups viven dentro del volumen `backups_prod`, no en
+el disco del host: para copiarlos afuera,
+`docker cp sc-pne-postgres-prod:/backups ./backups-copia`.
+
+## 7. Actualizar a una nueva versión
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml logs --tail 50 backend
+```
+
+El entrypoint del backend aplica las migraciones y `collectstatic` solo. nginx
+re-resuelve el backend cada 10 s, así que redeployar solo el backend
+(`up -d --build backend`) no deja a nginx apuntando a una IP vieja.
+
+## 8. Pendientes antes de operar con postulantes reales
 
 - **Correo (SMTP)**: sin `EMAIL_*`, el código de activación de cuenta y el de
   recuperación de contraseña **no le llegan a nadie** — se imprimen en

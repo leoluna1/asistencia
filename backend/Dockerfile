@@ -25,5 +25,12 @@ COPY . .
 RUN [ -f asistencia/ml_models/MiniFASNetV2.onnx ] || sh asistencia/ml_models/download.sh
 RUN chmod +x docker-entrypoint.sh
 
+# Sin root: los endpoints públicos le pasan imágenes no confiables a Pillow y
+# OpenCV; un bug en esos decoders no debería dar root en el contenedor.
+# media/ y staticfiles/ creados con dueño app: un volumen nombrado nuevo hereda
+# el dueño del directorio de la imagen.
+RUN useradd -r -u 10001 app && mkdir -p /app/media /app/staticfiles && chown -R app /app
+USER app
+
 EXPOSE 8000
 ENTRYPOINT ["./docker-entrypoint.sh"]
