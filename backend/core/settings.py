@@ -50,6 +50,24 @@ if not DEBUG and len(SECRET_KEY) < 50:
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
+# Cabeceras/cookies seguras cuando corre detrás de nginx (ver
+# docs/DESPLIEGUE-PRODUCCION.md). En DEBUG=True (dev) los defaults no
+# cambian nada de lo que ya funciona hoy.
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+# False hasta que exista un certificado real y se active el bloque HTTPS de
+# frontend/nginx.conf -- activarlo antes tumbaría el sitio (redirige a un
+# HTTPS que todavía no existe).
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
+# TLS termina en nginx: sin esto request.is_secure() es siempre False detrás del
+# proxy y SECURE_SSL_REDIRECT=True entra en loop de redirecciones. nginx pisa
+# X-Forwarded-Proto con $scheme, así que el cliente no lo puede falsificar.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# 0 hasta tener TLS estable; después 31536000 (un año). Sin HSTS, un atacante en
+# la red puede degradar a HTTP la primera visita.
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
+
 
 # Application definition
 
@@ -68,6 +86,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -152,6 +171,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Manifest con hash de contenido + gzip, servido por whitenoise sin nginx
+# aparte. Solo en producción: en dev (DEBUG=True) collectstatic ni se corre,
+# así que dejar el storage default ahí evita un manifest a medio generar.
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'

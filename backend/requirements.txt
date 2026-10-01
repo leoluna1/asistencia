@@ -11,3 +11,5 @@ weasyprint  # export PDF del dashboard con identidad navy/dorado (HTML/CSS -> PD
 # macOS + Homebrew: weasyprint necesita `brew install cairo pango gdk-pixbuf` y
 # DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib en el entorno para encontrar esas
 # libs (no hace falta en Linux/producción, ahí las resuelve el linker normal).
+gunicorn  # servidor WSGI de producción (ver docs/DESPLIEGUE-PRODUCCION.md)
+whitenoise  # sirve los estáticos del admin de Django sin configurar nginx aparte
