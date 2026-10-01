@@ -85,6 +85,13 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
 CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
+# TLS termina en nginx: sin esto request.is_secure() es siempre False detrás del
+# proxy y SECURE_SSL_REDIRECT=True entra en loop de redirecciones. nginx pisa
+# X-Forwarded-Proto con $scheme, así que el cliente no lo puede falsificar.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# 0 hasta tener TLS estable; después 31536000 (un año). Sin HSTS, un atacante en
+# la red puede degradar a HTTP la primera visita.
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
 ```
 
 - [ ] **Step 4: Agregar whitenoise al middleware y el storage de estáticos**
@@ -128,7 +135,7 @@ activa el `STATICFILES_STORAGE` nuevo).
 
 Run:
 ```bash
-DJANGO_DEBUG=False DJANGO_SECRET_KEY=verificacion-temporal-no-usar-en-real \
+DJANGO_DEBUG=False DJANGO_SECRET_KEY=verificacion-temporal-no-usar-en-real-relleno-hasta-superar-los-50-caracteres \
 DJANGO_ALLOWED_HOSTS=localhost \
 DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib python manage.py check
 ```
@@ -311,7 +318,8 @@ server {
 
 # Bloque HTTPS: descomentar cuando exista un dominio real con certificado
 # emitido (ver docs/DESPLIEGUE-PRODUCCION.md, sección TLS) y activar además
-# SECURE_SSL_REDIRECT=True en el .env del backend. Reemplazar TU_DOMINIO_AQUI
+# SECURE_SSL_REDIRECT=True en el .env del backend. El bloque `server` :80 de
+# abajo (el que redirige a https) reemplaza al catch-all `server_name _` de arriba. Reemplazar TU_DOMINIO_AQUI
 # por el dominio real en las 2 líneas marcadas.
 #
 # server {
@@ -481,6 +489,7 @@ GUNICORN_THREADS=4
 SECURE_SSL_REDIRECT=False
 SESSION_COOKIE_SECURE=False
 CSRF_COOKIE_SECURE=False
+SECURE_HSTS_SECONDS=0
 ```
 
 - [ ] **Step 3: Crear `docker-compose.prod.yml` en la raíz del repo**
@@ -554,7 +563,7 @@ Crear, en la raíz del repo, un archivo `.env` (ya cubierto por
 `.gitignore`, no hace falta tocarlo) con valores dummy pero válidos:
 
 ```
-DJANGO_SECRET_KEY=verificacion-temporal-no-usar-en-real
+DJANGO_SECRET_KEY=verificacion-temporal-no-usar-en-real-relleno-hasta-superar-los-50-caracteres
 DJANGO_DEBUG=False
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 CSRF_TRUSTED_ORIGINS=http://localhost
@@ -784,7 +793,10 @@ docker compose -f docker-compose.prod.yml ps   # confirmar los 3 servicios healt
 ```
 
 En este punto el sitio responde en `http://<ip-del-servidor>/` (HTTP plano,
-sin TLS todavía).
+sin TLS todavía). **Solo para verificar que levanta: NO dar acceso a
+postulantes ni agentes reales hasta completar la sección 4.** Sin TLS,
+contraseñas, JWT, cookies del admin, códigos de recuperación y fotos
+biométricas viajan en claro por la red (Wi-Fi de la sede, NAT, ISP).
 
 ## 4. Emitir el certificado TLS (una vez el dominio ya resuelve al servidor)
 
@@ -801,7 +813,9 @@ Después:
 2. En `docker-compose.prod.yml`, descomentar el puerto `"443:443"` del
    servicio `nginx`.
 3. En `.env`, poner `SECURE_SSL_REDIRECT=True`, `SESSION_COOKIE_SECURE=True`,
-   `CSRF_COOKIE_SECURE=True`.
+   `CSRF_COOKIE_SECURE=True`. Una vez comprobado que HTTPS anda, agregar
+   `SECURE_HSTS_SECONDS=31536000` (empezar con 3600 un día si hay dudas: HSTS
+   no se deshace fácil en los navegadores que ya lo vieron).
 4. `docker compose -f docker-compose.prod.yml up -d --build nginx backend`.
 
 Renovación: correr el mismo comando `certbot certonly` (o `certbot renew`)

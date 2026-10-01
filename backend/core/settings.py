@@ -32,15 +32,19 @@ environ.Env.read_env(BASE_DIR / ".env")
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
 
 # SECURITY WARNING: keep the secret key used in production secret!
-_SECRET_KEY_INSEGURA_DEV = 'django-insecure-1%(52t9jfpsf!0$k(yb3f_$p-*sk*oc6!s5y6c0-xaab#6h2@l'
-SECRET_KEY = env("DJANGO_SECRET_KEY", default=_SECRET_KEY_INSEGURA_DEV)
-if not DEBUG and SECRET_KEY == _SECRET_KEY_INSEGURA_DEV:
-    # Sin esto, un despliegue con DEBUG=False pero sin DJANGO_SECRET_KEY en el .env
-    # arrancaba igual con esta clave de desarrollo — está en el repo, es la misma
-    # para cualquiera que lo clone. Mejor fallar fuerte acá que servir tráfico real
-    # con una clave que cualquiera con acceso al código ya conoce.
+# Sin clave en el repo: la que había versionada firmaba los JWT y las URLs de
+# fotos de cualquier dev server (runserver en 0.0.0.0) y se podían forjar.
+SECRET_KEY = env("DJANGO_SECRET_KEY", default="")
+if not SECRET_KEY and DEBUG:
+    # ponytail: aleatoria por proceso — en dev las sesiones/JWT mueren al
+    # reiniciar; fijar DJANGO_SECRET_KEY en backend/.env si molesta.
+    from django.core.management.utils import get_random_secret_key
+
+    SECRET_KEY = get_random_secret_key()
+if not DEBUG and len(SECRET_KEY) < 50:
+    # Falla cerrado: sin clave, o con un placeholder tipo "change-me".
     raise ImproperlyConfigured(
-        "DJANGO_SECRET_KEY no está definida en el entorno: es obligatoria cuando "
+        "DJANGO_SECRET_KEY debe tener al menos 50 caracteres cuando "
         "DJANGO_DEBUG=False (producción)."
     )
 
@@ -214,7 +218,9 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@localhost')
 # El kiosco de verificación ahora exige login de agente (ver VerificarAsistenciaView)
 # y el frontend no renueva el token solo: 5 min (default) cortaría el kiosco a mitad
 # de la fila. ponytail: una jornada; refresh automático en el interceptor si se acorta.
-SIMPLE_JWT = {"ACCESS_TOKEN_LIFETIME": timedelta(hours=8)}
+# CHECK_REVOKE_TOKEN: el token lleva un hash de la contraseña y deja de valer al
+# cambiarla (reset de cuenta comprometida). Sin esto un token robado seguía sirviendo.
+SIMPLE_JWT = {"ACCESS_TOKEN_LIFETIME": timedelta(hours=8), "CHECK_REVOKE_TOKEN": True}
 
 REST_FRAMEWORK = {
     # Sin esto DRF usa el X-Forwarded-For ENTERO como identidad del throttle, y el

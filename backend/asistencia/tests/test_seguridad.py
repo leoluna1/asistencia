@@ -303,3 +303,129 @@ class CuentaDeshabilitadaNoSeReactivaTest(APITestCase):
         self.client.post("/api/postulantes/verificar-correo/", {"cedula": "1710034065", "codigo": "123456"})
         p.refresh_from_db()
         self.assertTrue(p.correo_verificado)
+
+
+# --- Pendientes #7-#17 de la auditoría run-1 ---
+import datetime as _dt  # noqa: E402
+
+from asistencia.views import _validar_codigo  # noqa: E402
+from rest_framework.exceptions import ValidationError as DRFValidationError  # noqa: E402
+
+
+def _postulante_activo(**extra):
+    usuario = User.objects.create_user(username="1710034065", password="Clave-vieja-123")
+    return Postulante.objects.create(
+        nombres="J", apellidos="P", cedula="1710034065", estatura_cm=170,
+        correo="j@example.com", usuario=usuario, correo_verificado=True, **extra,
+    )
+
+
+class ReenvioConEsperaTest(APITestCase):
+    def test_no_se_puede_pedir_otro_codigo_antes_de_un_minuto(self):
+        cache.clear()
+        p = _postulante_activo(codigo_verificacion="123456", codigo_generado_en=timezone.now(), intentos_codigo=4)
+        response = self.client.post("/api/postulantes/reenviar-codigo/", {"cedula": p.cedula})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        p.refresh_from_db()
+        self.assertEqual(p.intentos_codigo, 4)  # no se reseteó el presupuesto
+
+    def test_pasado_un_minuto_si_se_puede(self):
+        cache.clear()
+        p = _postulante_activo(
+            codigo_verificacion="123456",
+            codigo_generado_en=timezone.now() - _dt.timedelta(seconds=61),
+        )
+        response = self.client.post("/api/postulantes/reenviar-codigo/", {"cedula": p.cedula})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+
+class CodigoAtomicoTest(APITestCase):
+    def test_instancia_vieja_no_acepta_un_codigo_ya_anulado(self):
+        p = _postulante_activo(codigo_verificacion="123456", codigo_generado_en=timezone.now())
+        vieja = Postulante.objects.get(pk=p.pk)  # snapshot tomado antes de agotar intentos
+        for _ in range(5):
+            with self.assertRaises(DRFValidationError):
+                _validar_codigo(Postulante.objects.get(pk=p.pk), "000000")
+        with self.assertRaises(DRFValidationError):
+            _validar_codigo(vieja, "123456")
+
+    def test_incremento_sobre_snapshot_viejo_no_pierde_intentos(self):
+        p = _postulante_activo(codigo_verificacion="123456", codigo_generado_en=timezone.now())
+        snapshots = [Postulante.objects.get(pk=p.pk) for _ in range(5)]  # 5 requests "simultáneos"
+        for s in snapshots:
+            with self.assertRaises(DRFValidationError):
+                _validar_codigo(s, "000000")
+        p.refresh_from_db()
+        self.assertIsNone(p.codigo_verificacion)
+
+
+class ResetRevocaTokensTest(APITestCase):
+    def test_token_anterior_deja_de_servir_tras_restablecer(self):
+        cache.clear()
+        p = _postulante_activo()
+        access = self.client.post(
+            "/api/token/", {"username": p.cedula, "password": "Clave-vieja-123"}
+        ).data["access"]
+        p.codigo_verificacion, p.codigo_generado_en = "123456", timezone.now()
+        p.save()
+        r = self.client.post(
+            "/api/postulantes/restablecer-password/",
+            {"cedula": p.cedula, "codigo": "123456", "password_nueva": "Clave-nueva-456!"},
+        )
+        self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        self.assertEqual(self.client.get("/api/mi-postulante/").status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class TopeDePixelesTest(APITestCase):
+    def test_imagen_de_muchos_megapixeles_no_se_decodifica(self):
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("L", (5000, 5000)).save(buf, "PNG")  # 25 MP, pocos KB comprimida
+        self.assertLess(buf.tell(), 1024 * 1024)
+        self.assertIsNone(_leer_imagen(SimpleUploadedFile("x.png", buf.getvalue())))
+
+
+@override_settings(MEDIA_ROOT=MEDIA_TMP)
+class TopeDeFotosAdicionalesTest(APITestCase):
+    def test_cuarta_foto_adicional_es_rechazada(self):
+        pool.invalidar()
+        p = _postulante_activo(embedding=E1)
+        for _ in range(3):
+            p.fotos_adicionales.create(foto=_foto("rostro_real.jpg"), embedding=E1)
+        self.client.force_authenticate(p.usuario)
+        with patch("asistencia.views.calcular_embedding", return_value=E1):
+            r = self.client.post(f"/api/postulantes/{p.id}/fotos/", {"foto": _foto("rostro_real.jpg")}, format="multipart")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(p.fotos_adicionales.count(), 3)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_TMP)
+class PrecargaAtomicaTest(APITestCase):
+    def setUp(self):
+        pool.invalidar()
+        self.client.force_authenticate(_staff())
+        Postulante.objects.create(nombres="J", apellidos="P", cedula="1710034065", estatura_cm=165, sede="Q")
+
+    def _datos(self):
+        return {
+            "cedula": "1710034065", "fecha_nacimiento": "1995-05-20", "telefono": "0991234567",
+            "correo": "j@example.com", "genero": "M", "foto": _foto("rostro_real.jpg"),
+            "password": "Clave-segura-123", "nombres": "x", "apellidos": "x", "estatura_cm": 1,
+        }
+
+    def test_user_huerfano_da_400_y_no_500(self):
+        User.objects.create_user(username="1710034065")  # quedó de un intento anterior
+        with patch("asistencia.views.calcular_embedding", return_value=E1):
+            r = self.client.post("/api/postulantes/", self._datos(), format="multipart")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fallo_al_guardar_no_deja_user_huerfano(self):
+        from django.db import IntegrityError
+        with patch("asistencia.views.calcular_embedding", return_value=E1), patch(
+            "asistencia.serializers.PostulanteSerializer.update", side_effect=IntegrityError("x")
+        ):
+            r = self.client.post("/api/postulantes/", self._datos(), format="multipart")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username="1710034065").exists())

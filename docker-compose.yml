@@ -8,7 +8,9 @@ services:
       POSTGRES_USER: sc_pne
       POSTGRES_PASSWORD: sc_pne_local
     ports:
-      - "5434:5432"
+      # Solo loopback: sin IP, Docker publica en todas las interfaces y la
+      # contraseña de dev está en el repo.
+      - "127.0.0.1:5434:5432"
     volumes:
       - sc_pne_pg:/var/lib/postgresql/data
 

@@ -4,6 +4,7 @@ import secrets
 
 import cv2
 import numpy as np
+from PIL import Image
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -11,7 +12,7 @@ from django.core import signing
 from django.core.files.storage import default_storage
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.db.models.functions import TruncHour
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -48,6 +49,7 @@ from .serializers import (
 
 
 MAX_BYTES_FOTO = 5 * 1024 * 1024
+MAX_PIXELES_FOTO = 4096 * 4096  # una cámara 1080p son ~2 MP
 
 
 def _leer_imagen(foto):
@@ -55,6 +57,16 @@ def _leer_imagen(foto):
     Tope de tamaño: los endpoints que llaman esto son públicos, y decodificar un
     archivo arbitrariamente grande es una forma barata de agotar la RAM del server."""
     if foto.size > MAX_BYTES_FOTO:
+        return None
+    # El tope de bytes es sobre lo comprimido: un PNG liso de ~1 MB puede declarar
+    # 32000x32000 y ocupar GB al decodificarse. Pillow lee solo el encabezado.
+    try:
+        ancho, alto = Image.open(foto).size
+    except Exception:
+        return None
+    finally:
+        foto.seek(0)
+    if ancho * alto > MAX_PIXELES_FOTO:
         return None
     datos = np.frombuffer(foto.read(), dtype=np.uint8)
     foto.seek(0)
@@ -96,6 +108,8 @@ def _rechazar_rostro_de_otro(embedding, postulante_id=None):
 
 
 MINUTOS_EXPIRACION_CODIGO_VERIFICACION = 15
+# ponytail: espera fija por cuenta; tope horario si 1 código/min resulta poco.
+SEGUNDOS_ENTRE_CODIGOS = 60
 
 
 def _generar_y_enviar_codigo_verificacion(postulante):
@@ -105,6 +119,12 @@ def _generar_y_enviar_codigo_verificacion(postulante):
     SolicitarRecuperacionView); nunca las dos cosas a la vez para la misma cuenta.
     secrets.randbelow (CSPRNG), no random.randint: el código ahora también protege
     un reset de contraseña, no solo una activación."""
+    if postulante.codigo_generado_en and now() - postulante.codigo_generado_en < datetime.timedelta(
+        seconds=SEGUNDOS_ENTRE_CODIGOS
+    ):
+        # Cada código nuevo trae 5 intentos nuevos: sin espera por cuenta, un
+        # atacante con muchas IPs reemitía y seguía adivinando sin tope.
+        raise ValidationError({"cedula": "Esperá un minuto antes de pedir otro código."})
     codigo = f"{secrets.randbelow(1_000_000):06d}"
     postulante.codigo_verificacion = codigo
     postulante.codigo_generado_en = now()
@@ -131,14 +151,27 @@ def _validar_codigo(postulante, codigo):
     )
     if vencido:
         raise ValidationError({"codigo": "El código expiró. Pedí uno nuevo."})
-    if not secrets.compare_digest(str(codigo).encode(), postulante.codigo_verificacion.encode()):
-        postulante.intentos_codigo += 1
-        if postulante.intentos_codigo >= MAX_INTENTOS_CODIGO:
-            postulante.codigo_verificacion = None
-            postulante.save(update_fields=["intentos_codigo", "codigo_verificacion"])
+    # Todo contra la BD con UPDATE condicional, no sobre la instancia: varios
+    # requests simultáneos leen el mismo intentos_codigo y, con +=1 en Python,
+    # cada uno escribía k+1 (lost update) y el tope de 5 no se cumplía.
+    vigente = Postulante.objects.filter(
+        pk=postulante.pk,
+        codigo_verificacion=postulante.codigo_verificacion,
+        intentos_codigo__lt=MAX_INTENTOS_CODIGO,
+    )
+    if secrets.compare_digest(str(codigo).encode(), postulante.codigo_verificacion.encode()):
+        # Consumirlo es atómico también: un snapshot viejo no acepta un código
+        # que otro request ya anuló por exceso de intentos.
+        if not vigente.update(codigo_verificacion=None, codigo_generado_en=None):
             raise ValidationError({"codigo": "Demasiados intentos. Pedí un código nuevo."})
-        postulante.save(update_fields=["intentos_codigo"])
-        raise ValidationError({"codigo": "Código incorrecto."})
+        return
+    vigente.update(intentos_codigo=F("intentos_codigo") + 1)
+    anulado = Postulante.objects.filter(
+        pk=postulante.pk, intentos_codigo__gte=MAX_INTENTOS_CODIGO
+    ).update(codigo_verificacion=None)
+    if anulado:
+        raise ValidationError({"codigo": "Demasiados intentos. Pedí un código nuevo."})
+    raise ValidationError({"codigo": "Código incorrecto."})
 
 
 class RegistroPostulanteView(generics.CreateAPIView):
@@ -170,10 +203,13 @@ class RegistroPostulanteView(generics.CreateAPIView):
             # Precarga sin foto pero ya con cuenta: estado que el flujo normal no
             # produce (el admin ya no edita fotos). No se completa por acá.
             raise ValidationError({"cedula": "Ya existe un postulante con esta cédula."})
-        if precargado:
-            return self._completar_precarga(precargado, request)
         try:
             with transaction.atomic():
+                # La precarga también va adentro: creaba el User y después
+                # guardaba el Postulante; si lo segundo fallaba, el User huérfano
+                # (username = cédula) dejaba esa cédula en 500 para siempre.
+                if precargado:
+                    return self._completar_precarga(precargado, request)
                 return super().create(request, *args, **kwargs)
         except IntegrityError as error:
             # Dos registros casi simultáneos con la misma cédula O el mismo correo
@@ -371,11 +407,10 @@ class SolicitarRecuperacionView(APIView):
                 }
             )
         if not postulante.correo:
-            # No debería pasar para una cuenta activa (el registro exige correo,
-            # ver PostulanteSerializer), pero mi-postulante permite editarlo -- sin
-            # este chequeo, send_mail(..., [None]) es silencioso con el backend de
-            # consola y revienta recién con un proveedor SMTP real, después de ya
-            # haber devuelto {"enviado": true}.
+            # No debería pasar para una cuenta activa (el registro exige correo y
+            # mi-postulante no lo edita); cubre datos viejos o precargas raras --
+            # send_mail(..., [None]) es silencioso con el backend de consola y
+            # revienta recién con un proveedor SMTP real.
             raise ValidationError(
                 {"cedula": "Esta cuenta no tiene un correo registrado para mandar el código."}
             )
@@ -436,6 +471,9 @@ class RestablecerPasswordView(APIView):
         return Response({"restablecido": True})
 
 
+MAX_FOTOS_ADICIONALES = 3  # "2-3 fotos" según el diseño (ver FotoPostulante)
+
+
 class AgregarFotoPostulanteView(generics.CreateAPIView):
     """Suma un ángulo adicional de referencia a un postulante ya registrado (ver
     FotoPostulante). El postulante ya tiene su foto principal; esto es opcional,
@@ -456,6 +494,9 @@ class AgregarFotoPostulanteView(generics.CreateAPIView):
         es_el_propio_postulante = postulante.usuario_id == self.request.user.id
         if not (self.request.user.is_staff or es_el_propio_postulante):
             raise PermissionDenied("No puedes agregar fotos a otro postulante.")
+        if postulante.fotos_adicionales.count() >= MAX_FOTOS_ADICIONALES:
+            # Cada fila crece el pool 1:N de todos los workers y queda en disco.
+            raise ValidationError({"foto": f"Máximo {MAX_FOTOS_ADICIONALES} fotos adicionales."})
         embedding = _procesar_foto_de_registro(self.request.FILES["foto"])
         # Un ángulo más del MISMO rostro: sin esto el dueño podía enrolar la cara
         # de un sustituto (o de otro postulante) y el kiosco lo acreditaba como él.
