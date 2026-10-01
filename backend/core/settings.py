@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -26,7 +27,9 @@ environ.Env.read_env(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env.bool("DJANGO_DEBUG", default=True)
+# default False: si el .env de producción olvida esta variable, que falle cerrado
+# (y el guard de SECRET_KEY de abajo lo detecta) en vez de servir tracebacks.
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 _SECRET_KEY_INSEGURA_DEV = 'django-insecure-1%(52t9jfpsf!0$k(yb3f_$p-*sk*oc6!s5y6c0-xaab#6h2@l'
@@ -208,7 +211,17 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@localhost')
 
+# El kiosco de verificación ahora exige login de agente (ver VerificarAsistenciaView)
+# y el frontend no renueva el token solo: 5 min (default) cortaría el kiosco a mitad
+# de la fila. ponytail: una jornada; refresh automático en el interceptor si se acorta.
+SIMPLE_JWT = {"ACCESS_TOKEN_LIFETIME": timedelta(hours=8)}
+
 REST_FRAMEWORK = {
+    # Sin esto DRF usa el X-Forwarded-For ENTERO como identidad del throttle, y el
+    # cliente lo controla: un valor falso por request evadía todos los límites.
+    # 0 = usar la IP real del socket (dev, sin proxy); en producción detrás de
+    # nginx va NUM_PROXIES=1 (toma la IP que agregó nginx, la última del XFF).
+    'NUM_PROXIES': env.int('NUM_PROXIES', default=0),
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',

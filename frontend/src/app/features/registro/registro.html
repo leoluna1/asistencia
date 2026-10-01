@@ -131,9 +131,9 @@
           Registrar
         }
       </button>
-    } @else {
-      <app-mensaje tipo="ok">Registro exitoso. Te enviamos un código a {{ correo }}.</app-mensaje>
-      <p class="requisito">Ingresá el código de 6 dígitos para activar tu cuenta.</p>
+    } @else if (paso() === 'codigo') {
+      <app-mensaje tipo="ok">Registro exitoso. Enviamos un código a {{ correo }}.</app-mensaje>
+      <p class="requisito">El postulante ingresa el código de 6 dígitos que le llegó para activar su cuenta.</p>
 
       <mat-form-field appearance="outline">
         <mat-label>Código</mat-label>
@@ -168,6 +168,13 @@
       </button>
       <button mat-stroked-button type="button" [disabled]="reenviando()" (click)="reenviarCodigo()">
         Reenviar código
+      </button>
+    } @else if (paso() === 'listo') {
+      <app-mensaje tipo="ok">
+        Registro completo. El postulante ya puede ingresar con su cédula y su contraseña.
+      </app-mensaje>
+      <button mat-flat-button color="primary" type="button" (click)="nuevoRegistro()">
+        Registrar a otro postulante
       </button>
     }
   </mat-card>

@@ -60,6 +60,14 @@ class Postulante(models.Model):
     # Null cuando no hay verificación pendiente (ya verificado, o todavía sin foto).
     codigo_verificacion = models.CharField(max_length=6, null=True, blank=True)
     codigo_generado_en = models.DateTimeField(null=True, blank=True)
+    # True desde que verificó el correo por primera vez. Distingue "pendiente de
+    # verificar" (is_active=False, False acá) de "deshabilitado por un admin"
+    # (is_active=False, True acá) — sin esto, reenviar-codigo + verificar-correo
+    # reactivaban una cuenta que un admin había deshabilitado.
+    correo_verificado = models.BooleanField(default=False)
+    # Fallos contra el código vigente: al llegar al tope se invalida (ver
+    # _validar_codigo) — sin esto, 1M combinaciones eran fuerza bruta viable.
+    intentos_codigo = models.PositiveSmallIntegerField(default=0)
 
     def __str__(self):
         return f"{self.nombres} {self.apellidos} ({self.cedula})"

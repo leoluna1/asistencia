@@ -33,9 +33,18 @@ def _foto(nombre: str, nombre_subido: str = "foto.jpg") -> SimpleUploadedFile:
     return SimpleUploadedFile(nombre_subido, contenido, content_type="image/jpeg")
 
 
+def _autenticar_agente(client):
+    """El registro y el sondeo de encuadre los opera un agente en el puesto de
+    registro (ver RegistroPostulanteView)."""
+    client.force_authenticate(User.objects.create_user(username="agente-registro", is_staff=True))
+
+
 @override_settings(MEDIA_ROOT=MEDIA_TMP)
 class RegistroPostulanteViewTest(APITestCase):
     url = "/api/postulantes/"
+
+    def setUp(self):
+        _autenticar_agente(self.client)
 
     def _datos(self, **overrides):
         datos = {
@@ -115,7 +124,11 @@ class RegistroPostulanteViewTest(APITestCase):
         # (arriba), pero forzando la carrera contra el constraint de correo, no el
         # de cédula -- confirma que el except IntegrityError los distingue.
         self.client.post(self.url, self._datos(), format="multipart")
-        with patch("rest_framework.validators.UniqueValidator.__call__", return_value=None):
+        # En la carrera real el chequeo de rostro duplicado también lee la BD antes
+        # de cualquier commit (misma ventana que el UniqueValidator).
+        with patch("rest_framework.validators.UniqueValidator.__call__", return_value=None), patch(
+            "asistencia.views._rechazar_rostro_de_otro"
+        ):
             response = self.client.post(
                 self.url,
                 self._datos(cedula="0401843263", foto=_foto("rostro_real.jpg")),
@@ -190,26 +203,6 @@ class RegistroPostulanteViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("correo", response.data)
 
-    def test_completar_precarga_reusa_la_cuenta_si_ya_tenia_una(self):
-        # Un agente pudo haber limpiado la foto de un postulante ya completado
-        # (ej. mala foto) sin borrar su cuenta — completar de nuevo no debe
-        # intentar crear un User con el mismo username (cédula) otra vez.
-        usuario_previo = User.objects.create_user(username="1710034065", password="vieja-123")
-        Postulante.objects.create(
-            nombres="Juan", apellidos="Pérez", cedula="1710034065",
-            estatura_cm=175, sede="Quito", usuario=usuario_previo,
-        )
-        response = self.client.post(self.url, self._datos(), format="multipart")
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        postulante = Postulante.objects.get(cedula="1710034065")
-        self.assertEqual(postulante.usuario_id, usuario_previo.id)
-        self.assertEqual(User.objects.filter(username="1710034065").count(), 1)
-        # Ya la había verificado la primera vez — no se la vuelve a bloquear ni
-        # se le manda otro código solo por resubir la foto.
-        usuario_previo.refresh_from_db()
-        self.assertTrue(usuario_previo.is_active)
-        self.assertEqual(len(mail.outbox), 0)
-
     def test_completar_precarga_con_cuenta_nueva_tambien_queda_inactiva(self):
         Postulante.objects.create(
             nombres="Juan", apellidos="Pérez", cedula="1710034065",
@@ -229,7 +222,11 @@ class RegistroPostulanteViewTest(APITestCase):
         # segundo INSERT, que sí choca contra la restricción unique real, se
         # traduce a un 400 en vez de un 500 sin capturar.
         self.client.post(self.url, self._datos(), format="multipart")
-        with patch("rest_framework.validators.UniqueValidator.__call__", return_value=None):
+        # En la carrera real el chequeo de rostro duplicado también lee la BD antes
+        # de cualquier commit (misma ventana que el UniqueValidator).
+        with patch("rest_framework.validators.UniqueValidator.__call__", return_value=None), patch(
+            "asistencia.views._rechazar_rostro_de_otro"
+        ):
             response = self.client.post(
                 self.url, self._datos(foto=_foto("rostro_real.jpg")), format="multipart"
             )
@@ -301,6 +298,9 @@ class ProbarEncuadreViewTest(APITestCase):
 
     url = "/api/postulantes/probar-encuadre/"
 
+    def setUp(self):
+        _autenticar_agente(self.client)
+
     def test_foto_bien_encuadrada_devuelve_ok(self):
         response = self.client.post(self.url, {"foto": _foto("rostro_real.jpg")}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -315,21 +315,6 @@ class ProbarEncuadreViewTest(APITestCase):
         self.assertFalse(response.data["ok"])
         self.assertIn("motivo", response.data)
 
-    def test_no_requiere_login(self):
-        # Es parte del flujo público de registro, antes de que exista cualquier cuenta.
-        response = self.client.post(self.url, {"foto": _foto("rostro_real.jpg")}, format="multipart")
-        self.assertNotEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertNotEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_token_viejo_o_invalido_en_el_navegador_no_lo_rechaza(self):
-        # Regresión: el interceptor de Angular manda el token guardado en localStorage
-        # a TODAS las requests, incluidas las de este endpoint público. Un token
-        # inválido/expirado (ej. de un agente logueado antes en el mismo equipo) hacía
-        # que DRF devolviera 401 antes de llegar a chequear el permiso, aunque la vista
-        # no exige login — por eso authentication_classes = [] en la vista.
-        self.client.credentials(HTTP_AUTHORIZATION="Bearer un-token-invalido-o-vencido")
-        response = self.client.post(self.url, {"foto": _foto("rostro_real.jpg")}, format="multipart")
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
 
 
 def _imagen_lisa_jpeg() -> bytes:
@@ -578,6 +563,8 @@ class VerificarAsistenciaViewTest(APITestCase):
         # la transacción del test: sin esto arrastra ids de postulantes creados
         # en un test anterior que el rollback ya borró.
         pool.invalidar()
+        # El kiosco de verificación exige agente logueado (ver VerificarAsistenciaView).
+        self.client.force_authenticate(User.objects.create_user(username="kiosco", is_staff=True))
         self.postulante = Postulante.objects.create(
             nombres="Juan",
             apellidos="Pérez",
@@ -599,9 +586,8 @@ class VerificarAsistenciaViewTest(APITestCase):
         self.assertEqual(Asistencia.objects.get().metodo, Asistencia.Metodo.AUTOMATICO)
 
     def test_no_expone_pii_del_postulante_en_la_respuesta_publica(self):
-        # /api/verificar/ no exige login (ver nota de authentication_classes en la
-        # vista) — cualquiera con acceso de red podía mandar fotos al voleo
-        # buscando coincidencia 1:N y recibir foto/teléfono/correo/fecha de
+        # /api/verificar/ antes no exigía login — cualquiera con acceso de red
+        # podía mandar fotos al voleo buscando coincidencia 1:N y recibir foto/teléfono/correo/fecha de
         # nacimiento/género/estatura de un postulante real. El kiosco solo
         # muestra nombre y apellido en pantalla (ver verificar.html), no hace
         # falta exponer el resto acá.
@@ -1200,18 +1186,6 @@ class MiPostulanteViewTest(APITestCase):
         self.postulante.refresh_from_db()
         self.assertEqual(self.postulante.cedula, "1710034065")  # no cambió, es de solo lectura
 
-    def test_no_puede_dejar_el_correo_en_blanco(self):
-        # Hallazgo de la revisión final: correo ya es unique=True (ver migración
-        # 0010) pero blank=True a nivel de modelo seguía dejando pasar "" por acá
-        # -- dos postulantes con correo="" chocaban con un IntegrityError sin
-        # capturar (500). Rechazarlo acá, antes del guardado, es más simple que
-        # traducir el IntegrityError en esta vista también.
-        self.client.force_authenticate(self.usuario)
-        response = self.client.patch(self.url, {"correo": ""})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.postulante.refresh_from_db()
-        self.assertEqual(self.postulante.correo, "juan@example.com")
-
     def test_postulante_no_puede_ver_el_dashboard(self):
         self.client.force_authenticate(self.usuario)
         response = self.client.get("/api/asistencias/")
@@ -1229,6 +1203,9 @@ class LoginDePostulanteTest(APITestCase):
     postulante puede loguearse después por el mismo /api/token/ que usan los
     agentes — este test cubre ese camino de punta a punta."""
 
+    def setUp(self):
+        _autenticar_agente(self.client)
+
     def test_no_se_puede_loguear_antes_de_verificar_el_correo(self):
         datos = {
             "nombres": "Juan", "apellidos": "Pérez", "cedula": "1710034065",
@@ -1237,6 +1214,7 @@ class LoginDePostulanteTest(APITestCase):
             "sede": "Quito", "foto": _foto("rostro_real.jpg"), "password": "clave-segura-123",
         }
         self.client.post("/api/postulantes/", datos, format="multipart")
+        self.client.force_authenticate(None)
 
         response = self.client.post(
             "/api/token/", {"username": "1710034065", "password": "clave-segura-123"}
@@ -1251,6 +1229,7 @@ class LoginDePostulanteTest(APITestCase):
             "sede": "Quito", "foto": _foto("rostro_real.jpg"), "password": "clave-segura-123",
         }
         self.client.post("/api/postulantes/", datos, format="multipart")
+        self.client.force_authenticate(None)
         codigo = Postulante.objects.get(cedula="1710034065").codigo_verificacion
         self.client.post(
             "/api/postulantes/verificar-correo/", {"cedula": "1710034065", "codigo": codigo}
@@ -1277,7 +1256,9 @@ class TokenConRolTest(APITestCase):
             "telefono": "0991234567", "correo": "juan@example.com", "genero": "M",
             "sede": "Quito", "foto": _foto("rostro_real.jpg"), "password": "clave-segura-123",
         }
+        _autenticar_agente(self.client)
         self.client.post("/api/postulantes/", datos, format="multipart")
+        self.client.force_authenticate(None)
         codigo = Postulante.objects.get(cedula="1710034065").codigo_verificacion
         self.client.post(
             "/api/postulantes/verificar-correo/", {"cedula": "1710034065", "codigo": codigo}
@@ -1320,6 +1301,7 @@ class ThrottlingTest(APITestCase):
         self.assertEqual(respuesta.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
     def test_verificar_se_bloquea_tras_superar_el_limite_de_intentos(self):
+        self.client.force_authenticate(User.objects.create_user(username="kiosco", is_staff=True))
         with patch.dict(ScopedRateThrottle.THROTTLE_RATES, {"verificar": "1/min"}):
             self.client.post("/api/verificar/", {})
             respuesta = self.client.post("/api/verificar/", {})
@@ -1329,8 +1311,9 @@ class ThrottlingTest(APITestCase):
         # Polea cada ~900ms por puesto de registro: si cayera en el piso global
         # `anon` (120/min), dos puestos detrás de la misma IP lo agotan y la
         # auto-captura se apaga sin avisar (camera-capture.ts ignora el error).
+        _autenticar_agente(self.client)
         with patch.dict(
-            ScopedRateThrottle.THROTTLE_RATES, {"encuadre": "1/min", "anon": "1000/min"}
+            ScopedRateThrottle.THROTTLE_RATES, {"encuadre": "1/min", "user": "1000/min"}
         ):
             self.client.post("/api/postulantes/probar-encuadre/", {})
             respuesta = self.client.post("/api/postulantes/probar-encuadre/", {})

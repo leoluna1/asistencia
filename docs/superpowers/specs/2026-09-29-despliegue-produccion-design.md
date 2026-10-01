@@ -137,10 +137,13 @@ anida el build ahí por defecto).
 - `location /` → `try_files $uri $uri/ /index.html` (SPA routing de Angular).
 - `location ~ ^/(api|admin|static)/` → `proxy_pass http://backend:8000;` +
   headers estándar (`X-Forwarded-For`, `X-Forwarded-Proto`, `Host`).
-- `location /media/` → `alias /media_files/;` sirviendo directo desde el
-  volumen compartido con el backend (más eficiente que proxyar binarios de
-  fotos a través de gunicorn; whitenoise no cubre `MEDIA_ROOT`, solo
-  `STATIC_ROOT`, así que este bloque es necesario aparte).
+- **Sin** `location /media/` (cambiado en la auditoría de seguridad del
+  2026-09-30): las fotos son biométricas y servirlas directo desde el volumen
+  las dejaba públicas para cualquiera con la URL. Salen solo por
+  `/api/fotos/<firma>/` (URL firmada, ver `FotoFirmadaField`).
+- `client_max_body_size 6m` y `limit_req` (10/min por IP) en `/admin/login/`.
+- `.env` de producción: `NUM_PROXIES=1` (el throttle de DRF toma la IP real
+  que agrega nginx; sin esto un `X-Forwarded-For` falso evade los límites).
 - Bloque HTTPS comentado (server en :443, `ssl_certificate`
   `/etc/letsencrypt/live/<dominio>/fullchain.pem`, redirect 80→443) con un
   comentario explicando qué descomentar y en qué orden una vez exista el

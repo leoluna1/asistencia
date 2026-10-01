@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -11,7 +11,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { CameraCapture } from '../../shared/camera-capture/camera-capture';
 import { InlineMessage } from '../../shared/inline-message/inline-message';
-import { AuthService } from '../../core/auth.service';
 import { PostulantesService } from '../../core/postulantes.service';
 import { primerMensajeDeError } from '../../core/errores';
 import { cedulaEcuatorianaValida, soloDigitos } from '../../core/validators';
@@ -58,7 +57,7 @@ export class Registro {
   // getUserMedia (dentro de <app-camera-capture>), para no pedir permiso de
   // cámara mientras la persona todavía está llenando el formulario. 'codigo':
   // la cuenta queda inactiva hasta confirmar el correo (ver VerificarCorreoView).
-  readonly paso = signal<'datos' | 'foto' | 'codigo'>('datos');
+  readonly paso = signal<'datos' | 'foto' | 'codigo' | 'listo'>('datos');
 
   readonly foto = signal<Blob | null>(null);
   readonly fotoPreview = signal<string | null>(null);
@@ -72,11 +71,11 @@ export class Registro {
   readonly reenviando = signal(false);
   readonly codigoReenviado = signal(false);
 
-  constructor(
-    private postulantes: PostulantesService,
-    private auth: AuthService,
-    private router: Router
-  ) {}
+  constructor(private postulantes: PostulantesService) {}
+
+  nuevoRegistro(): void {
+    location.reload();
+  }
 
   // Escribe el valor filtrado directo en el <input>: si el resultado filtrado
   // coincide con el valor previo del modelo (ej. se pegó texto con dígitos de más
@@ -181,10 +180,10 @@ export class Registro {
     this.errorCodigo.set(null);
     try {
       await this.postulantes.verificarCorreo(this.cedula, this.codigoIngresado);
-      // Recién acá se loguea — con la misma clave que ya escribió — y se lo
-      // manda a su panel, que sirve de confirmación de que todo funcionó.
-      await this.auth.login(this.cedula, this.password);
-      this.router.navigate(['/mi-postulante']);
+      // Sin login acá: la pantalla es del agente del puesto de registro, y loguear
+      // al postulante pisaba la sesión del agente. El postulante entra después
+      // desde su propio dispositivo.
+      this.paso.set('listo');
     } catch (e: any) {
       this.errorCodigo.set(primerMensajeDeError(e?.error) || 'No se pudo verificar el código.');
     } finally {

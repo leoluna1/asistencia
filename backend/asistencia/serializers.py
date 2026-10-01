@@ -1,7 +1,26 @@
+from django.contrib.auth.password_validation import validate_password
+from django.core import signing
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.urls import reverse
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import Asistencia, FotoPostulante, Postulante
+
+
+class FotoFirmadaField(serializers.ImageField):
+    """Las fotos son biométricas: nunca se exponen por /media/ (cualquiera con la URL
+    las veía). La API devuelve /api/fotos/<nombre firmado>/ — solo quien recibió la
+    URL de una respuesta autorizada la tiene, y no se puede fabricar sin SECRET_KEY.
+    ponytail: firma sin vencimiento, para que el navegador pueda cachearla; pasar a
+    TimestampSigner si hace falta que una URL filtrada caduque."""
+
+    def to_representation(self, value):
+        if not value:
+            return None
+        url = reverse("foto-firmada", args=[signing.Signer(salt="foto").sign(value.name)])
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request else url
 
 
 class TokenConRolSerializer(TokenObtainPairSerializer):
@@ -26,6 +45,7 @@ class PostulanteSerializer(serializers.ModelSerializer):
     # No es un campo del modelo: la vista la usa para crear la cuenta (User) del
     # postulante (ver RegistroPostulanteView), nunca se guarda en Postulante.
     password = serializers.CharField(write_only=True, required=False, min_length=8)
+    foto = FotoFirmadaField()
 
     class Meta:
         model = Postulante
@@ -44,7 +64,8 @@ class PostulanteSerializer(serializers.ModelSerializer):
             "creado_en",
             "password",
         ]
-        read_only_fields = ["id", "creado_en"]
+        # sede la asigna la Policía (CSV), no el formulario público.
+        read_only_fields = ["id", "creado_en", "sede"]
         # El modelo permite estos campos vacíos (precarga por CSV, ver
         # importar_postulantes), pero un alta/completado por la API siempre los
         # necesita en el mismo request.
@@ -72,6 +93,11 @@ class PostulanteSerializer(serializers.ModelSerializer):
         sin_cuenta_todavia = self.instance is None or self.instance.usuario_id is None
         if sin_cuenta_todavia and not attrs.get("password"):
             raise serializers.ValidationError({"password": "Este campo es obligatorio."})
+        if attrs.get("password"):
+            try:
+                validate_password(attrs["password"])
+            except DjangoValidationError as error:
+                raise serializers.ValidationError({"password": error.messages})
         return attrs
 
     def create(self, validated_data):
@@ -89,9 +115,18 @@ class MiPostulanteSerializer(PostulanteSerializer):
     rehacer el pipeline de reconocimiento facial (foto) o tocar la identidad misma
     (cédula), fuera del alcance de una autoedición de datos de contacto."""
 
+    # Declarado de nuevo: foto es un campo DECLARADO en el padre, y DRF ignora
+    # read_only_fields para los campos declarados (solo aplica a los autogenerados).
+    foto = FotoFirmadaField(read_only=True)
+
     class Meta(PostulanteSerializer.Meta):
         fields = [c for c in PostulanteSerializer.Meta.fields if c != "password"]
-        read_only_fields = PostulanteSerializer.Meta.read_only_fields + ["cedula", "foto"]
+        # nombres/apellidos/estatura/sede son datos oficiales de la convocatoria
+        # (la estatura es requisito de ingreso); correo es el canal de recuperación:
+        # cambiarlo sin reverificar era una forma de quedarse con la cuenta.
+        read_only_fields = PostulanteSerializer.Meta.read_only_fields + [
+            "cedula", "foto", "nombres", "apellidos", "estatura_cm", "correo",
+        ]
 
 
 class PostulanteVerificacionSerializer(serializers.ModelSerializer):
@@ -109,6 +144,8 @@ class PostulanteVerificacionSerializer(serializers.ModelSerializer):
 
 
 class FotoPostulanteSerializer(serializers.ModelSerializer):
+    foto = FotoFirmadaField()
+
     class Meta:
         model = FotoPostulante
         fields = ["id", "foto", "creado_en"]
@@ -122,7 +159,7 @@ class AsistenciaSerializer(serializers.ModelSerializer):
     postulante_cedula = serializers.CharField(source="postulante.cedula", read_only=True)
     postulante_nombres = serializers.CharField(source="postulante.nombres", read_only=True)
     postulante_apellidos = serializers.CharField(source="postulante.apellidos", read_only=True)
-    postulante_foto = serializers.ImageField(source="postulante.foto", read_only=True)
+    postulante_foto = FotoFirmadaField(source="postulante.foto", read_only=True)
 
     class Meta:
         model = Asistencia

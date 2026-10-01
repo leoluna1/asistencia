@@ -9,10 +9,16 @@ export const routes: Routes = [
   },
   {
     path: 'verificar',
+    // El kiosco lo abre un agente logueado (la API exige is_staff, ver
+    // VerificarAsistenciaView); el postulante solo se sienta frente a la cámara.
+    canActivate: [adminGuard],
     loadComponent: () => import('./features/verificar/verificar').then((m) => m.Verificar)
   },
   {
     path: 'registro',
+    // Puesto de registro supervisado: lo abre un agente (la API exige is_staff,
+    // ver RegistroPostulanteView), que confirma la cédula física.
+    canActivate: [adminGuard],
     loadComponent: () => import('./features/registro/registro').then((m) => m.Registro)
   },
   {

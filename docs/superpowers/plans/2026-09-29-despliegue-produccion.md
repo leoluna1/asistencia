@@ -4,6 +4,16 @@
 
 **Goal:** Dejar en el repo los artefactos de despliegue de producción (Dockerfiles de backend/frontend, `docker-compose.prod.yml`, config de nginx, backups, guía) para que, cuando exista un servidor Hetzner/DO real, levantar producción sea `git clone` + `.env` real + `docker compose up -d`.
 
+
+> **Ajustes de seguridad (auditoría 2026-09-30) — prevalecen sobre lo que diga
+> abajo:** nginx NO sirve `/media/` ni monta `media_files` (las fotos son
+> biométricas y salen solo por `/api/fotos/<firma>/`, URL firmada generada por el
+> backend); `.env` de producción lleva `NUM_PROXIES=1`; nginx agrega
+> `client_max_body_size 6m` y `limit_req` en `/admin/login/`. El riesgo "Ruta de
+> `/media/` inconsistente" y el Step 11 de Task 4 quedan obsoletos: en su lugar,
+> verificar que `curl -s -o /dev/null -w '%{http_code}' http://localhost/media/x`
+> NO devuelva un archivo del volumen (cae en el `index.html` de Angular).
+
 **Architecture:** Un solo `docker-compose.prod.yml` con 4 servicios: `postgres` (fuente de verdad), `backend` (Django/DRF vía gunicorn con workers `gthread`, respetando el lock de concurrencia de `facial.py`), `nginx` (sirve el build de Angular, proxya `/api`/`/admin`/`/static` a gunicorn, sirve `/media` directo desde un volumen compartido) y `certbot` (perfil opcional, no arranca por defecto). Nada de esto toca `docker-compose.yml` de dev.
 
 **Tech Stack:** Docker, docker-compose, nginx, gunicorn (worker class `gthread`), whitenoise, Python 3.12, Node 22 (build de Angular).
@@ -250,7 +260,7 @@ git commit -m "Dockerfile de producción para el backend (gunicorn + gthread)"
 - Create: `frontend/.dockerignore`
 
 **Interfaces:**
-- Produces: imagen Docker `sc-pne-frontend` sirviendo el build de Angular en `:80`, con `/api|/admin|/static` proxyado a un host `backend:8000` y `/media/` servido desde `/media_files` — ambos nombres (`backend`, `/media_files`) los define `docker-compose.prod.yml` en Task 4.
+- Produces: imagen Docker `sc-pne-frontend` sirviendo el build de Angular en `:80`, con `/api|/admin|/static` proxyado a un host `backend:8000` (las fotos NO se sirven por nginx: salen solo por `/api/fotos/<firma>/`, ver ajustes de seguridad arriba) — el nombre `backend` lo define `docker-compose.prod.yml` en Task 4.
 
 - [ ] **Step 1: Crear `frontend/.dockerignore`**
 
@@ -263,15 +273,30 @@ dist/
 - [ ] **Step 2: Crear `frontend/nginx.conf`**
 
 ```nginx
+# Fuerza bruta contra el login del admin: DRF no throttlea /admin/ (no es una
+# vista DRF). Límite nativo de nginx por IP real.
+limit_req_zone $binary_remote_addr zone=admin_login:10m rate=10r/m;
+
 server {
     listen 80;
     server_name _;
+    # Fotos de registro/verificación: el backend rechaza >5 MB (MAX_BYTES_FOTO);
+    # esto corta antes de que el archivo entero llegue a gunicorn.
+    client_max_body_size 6m;
 
     root /usr/share/nginx/html;
     index index.html;
 
     location / {
         try_files $uri $uri/ /index.html;
+    }
+
+    location = /admin/login/ {
+        limit_req zone=admin_login burst=5 nodelay;
+        proxy_pass http://backend:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location ~ ^/(api|admin|static)/ {
@@ -282,9 +307,6 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location /media/ {
-        alias /media_files/;
-    }
 }
 
 # Bloque HTTPS: descomentar cuando exista un dominio real con certificado
@@ -295,6 +317,7 @@ server {
 # server {
 #     listen 443 ssl;
 #     server_name TU_DOMINIO_AQUI;
+#     client_max_body_size 6m;
 #
 #     ssl_certificate     /etc/letsencrypt/live/TU_DOMINIO_AQUI/fullchain.pem;
 #     ssl_certificate_key /etc/letsencrypt/live/TU_DOMINIO_AQUI/privkey.pem;
@@ -306,16 +329,20 @@ server {
 #         try_files $uri $uri/ /index.html;
 #     }
 #
+#     location = /admin/login/ {
+#         limit_req zone=admin_login burst=5 nodelay;
+#         proxy_pass http://backend:8000;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+#
 #     location ~ ^/(api|admin|static)/ {
 #         proxy_pass http://backend:8000;
 #         proxy_set_header Host $host;
 #         proxy_set_header X-Real-IP $remote_addr;
 #         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 #         proxy_set_header X-Forwarded-Proto $scheme;
-#     }
-#
-#     location /media/ {
-#         alias /media_files/;
 #     }
 # }
 #
@@ -383,7 +410,7 @@ git commit -m "Dockerfile de producción para el frontend (build Angular + nginx
 - Modify: `.gitignore` (excepción para `.env.production.example`)
 
 **Interfaces:**
-- Consumes: imagen `backend` de Task 2 (puerto `8000`), imagen `nginx`/frontend de Task 3 (espera un host `backend` resoluble y un volumen montado en `/media_files`).
+- Consumes: imagen `backend` de Task 2 (puerto `8000`), imagen `nginx`/frontend de Task 3 (espera un host `backend` resoluble).
 - Produces: red Docker Compose donde `backend` es resoluble por nombre de servicio desde `nginx` — nombre fijo del que depende Task 5 (`postgres` como nombre de servicio/host).
 
 - [ ] **Step 1: Agregar la excepción al `.gitignore` raíz**
@@ -411,6 +438,9 @@ DJANGO_SECRET_KEY=
 DJANGO_DEBUG=False
 # Dominio(s) reales separados por coma, ej: asistencia.policia.gob.ec
 DJANGO_ALLOWED_HOSTS=
+# Obligatorio detrás de nginx: el throttle de DRF toma la IP que agrega nginx
+# (última del X-Forwarded-For). Sin esto, un XFF falso evade todos los límites.
+NUM_PROXIES=1
 # Mismo dominio con esquema, ej: https://asistencia.policia.gob.ec
 CSRF_TRUSTED_ORIGINS=
 
@@ -492,7 +522,6 @@ services:
       - "80:80"
       # - "443:443"  # descomentar junto con el bloque HTTPS de frontend/nginx.conf
     volumes:
-      - media_files:/media_files:ro
       - certbot_certs:/etc/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
     depends_on:

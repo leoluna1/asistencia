@@ -14,9 +14,11 @@ from .views import (
     SolicitarRecuperacionView,
     VerificarAsistenciaView,
     VerificarCorreoView,
+    foto_firmada,
 )
 
 urlpatterns = [
+    path("fotos/<path:firma>/", foto_firmada, name="foto-firmada"),
     path("postulantes/", RegistroPostulanteView.as_view(), name="registro-postulante"),
     path(
         "postulantes/<int:postulante_id>/fotos/",
