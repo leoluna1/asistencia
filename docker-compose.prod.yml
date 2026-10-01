@@ -8,6 +8,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pg_data_prod:/var/lib/postgresql/data
+      - ./scripts/backup-postgres.sh:/scripts/backup-postgres.sh:ro
+      - backups_prod:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -49,6 +51,7 @@ services:
 
 volumes:
   pg_data_prod:
+  backups_prod:
   media_files:
   certbot_certs:
   certbot_webroot:
