@@ -437,3 +437,26 @@ class CacheCompartidoTest(APITestCase):
         from django.core.cache import caches
         from django.core.cache.backends.db import DatabaseCache
         self.assertIsInstance(caches["default"], DatabaseCache)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_TMP)
+class KioscoMuestraIdentidadTest(APITestCase):
+    def test_respuesta_trae_cedula_y_foto_de_referencia_pero_no_contacto(self):
+        from asistencia.facial import get_embedding
+        from asistencia.tests.test_views import cv2_leer
+        pool.invalidar()
+        Postulante.objects.create(
+            nombres="Juan", apellidos="Pérez", cedula="1710034065", estatura_cm=170,
+            telefono="0991234567", correo="j@example.com", foto=_foto("rostro_real.jpg"),
+            embedding=get_embedding(cv2_leer("rostro_real.jpg")),
+        )
+        self.client.force_authenticate(_staff())
+        r = self.client.post("/api/verificar/", {"sede": "Q", "foto": _foto("rostro_real.jpg")}, format="multipart")
+        self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)
+        p = r.data["postulante"]
+        # El agente compara la cédula física y la cara de la foto de registro con
+        # la persona frente a la cámara: un nombre solo no delata una suplantación.
+        self.assertEqual(p["cedula"], "1710034065")
+        self.assertIn("/api/fotos/", p["foto"])
+        self.assertNotIn("telefono", p)
+        self.assertNotIn("correo", p)

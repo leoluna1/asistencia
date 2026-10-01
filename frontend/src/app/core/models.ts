@@ -20,6 +20,8 @@ export interface PostulanteVerificacion {
   id: number;
   nombres: string;
   apellidos: string;
+  cedula: string;
+  foto: string | null;
 }
 
 export interface ResultadoVerificacion {

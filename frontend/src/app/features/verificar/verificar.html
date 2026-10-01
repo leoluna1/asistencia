@@ -36,7 +36,12 @@
     @if (resultado()?.verificado) {
       <div class="paso-resultado exito">
         <mat-icon class="icono">check_circle</mat-icon>
+        @if (resultado()?.postulante?.foto) {
+          <!-- Foto de registro: el agente la compara con la persona frente a la cámara. -->
+          <img class="foto-referencia" [src]="resultado()?.postulante?.foto" alt="Foto de registro del postulante" />
+        }
         <h2>{{ resultado()?.postulante?.nombres }} {{ resultado()?.postulante?.apellidos }}</h2>
+        <p class="cedula-referencia">Cédula <span class="mono">{{ resultado()?.postulante?.cedula }}</span> · compárala con la cédula física</p>
         <p>
           {{
             resultado()?.ya_registrado

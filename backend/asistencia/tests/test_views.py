@@ -600,7 +600,7 @@ class VerificarAsistenciaViewTest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         datos_postulante = response.data["postulante"]
-        self.assertEqual(set(datos_postulante.keys()), {"id", "nombres", "apellidos"})
+        self.assertEqual(set(datos_postulante.keys()), {"id", "nombres", "apellidos", "cedula", "foto"})
 
     def test_segunda_verificacion_no_duplica_asistencia(self):
         self.client.post(self.url, {"sede": "Quito", "foto": _foto("rostro_real.jpg")}, format="multipart")

@@ -629,7 +629,7 @@ class VerificarAsistenciaView(APIView):
                 "verificado": True,
                 "ya_registrado": not creada,
                 "confianza": confianza,
-                "postulante": PostulanteVerificacionSerializer(postulante).data,
+                "postulante": PostulanteVerificacionSerializer(postulante, context={"request": request}).data,
                 "verificado_en": asistencia.verificado_en,
             }
         )
