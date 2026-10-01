@@ -211,6 +211,17 @@ if USE_S3:
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
+# Cache compartido en el mismo Postgres: los throttles de DRF (login, códigos,
+# registro) viven acá. Con el LocMem por defecto cada worker de gunicorn
+# contaba por su lado y los límites reales eran 3x los configurados.
+# ponytail: una query por request limitada; Redis solo si se vuelve un cuello.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "cache_django",
+    }
+}
+
 # Angular corre en otro puerto (dev) / dominio (prod) — necesita CORS y JWT en vez de
 # la sesión de Django (que sería un dolor de cabeza de CSRF cross-origin).
 CORS_ALLOWED_ORIGINS = env.list(

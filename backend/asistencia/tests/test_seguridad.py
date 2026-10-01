@@ -429,3 +429,11 @@ class PrecargaAtomicaTest(APITestCase):
             r = self.client.post("/api/postulantes/", self._datos(), format="multipart")
         self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(User.objects.filter(username="1710034065").exists())
+
+
+class CacheCompartidoTest(APITestCase):
+    def test_throttles_usan_un_cache_compartido_entre_workers(self):
+        # LocMem es por proceso: con 3 workers de gunicorn cada límite se triplicaba.
+        from django.core.cache import caches
+        from django.core.cache.backends.db import DatabaseCache
+        self.assertIsInstance(caches["default"], DatabaseCache)
