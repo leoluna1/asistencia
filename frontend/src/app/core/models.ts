@@ -26,7 +26,7 @@ export interface PostulanteVerificacion {
 
 export interface ResultadoVerificacion {
   verificado: boolean;
-  motivo?: 'no_se_detecto_rostro' | 'sin_coincidencia';
+  motivo?: 'no_se_detecto_rostro' | 'sin_coincidencia' | 'coincidencia_ambigua';
   confianza?: number | null;
   ya_registrado?: boolean;
   sede_original?: string;

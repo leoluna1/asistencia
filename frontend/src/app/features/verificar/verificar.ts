@@ -67,7 +67,8 @@ export class Verificar implements OnDestroy {
     try {
       const resultado = await this.asistencia.verificar(this.sede, blob);
       this.resultado.set(resultado);
-      if (resultado.verificado) {
+      // Ambigua: reintentar da lo mismo (el rostro está en más de una cédula).
+      if (resultado.verificado || resultado.motivo === 'coincidencia_ambigua') {
         this.detener();
         return;
       }

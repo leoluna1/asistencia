@@ -613,6 +613,13 @@ class VerificarAsistenciaView(APIView):
             postulante_id, confianza = resultado
             postulante = get_object_or_404(Postulante, id=postulante_id)
 
+        # Mismo rostro en más de un postulante (registros previos al chequeo de
+        # duplicados): elegir el mejor era casi al azar. No se acredita a nadie;
+        # el agente registra a mano verificando la cédula física.
+        segunda = pool.segunda_coincidencia(embedding_consulta, ids, matriz, postulante.id)
+        if segunda is not None and segunda >= UMBRAL_COINCIDENCIA:
+            return Response({"verificado": False, "motivo": "coincidencia_ambigua"})
+
         # Registro único de asistencia (decisión confirmada): si ya existía, no se duplica,
         # solo se informa que ya estaba marcada.
         asistencia, creada = Asistencia.objects.get_or_create(

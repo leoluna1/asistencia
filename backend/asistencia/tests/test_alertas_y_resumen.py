@@ -83,3 +83,32 @@ class PdfResumenTest(APITestCase):
         self.assertEqual(contexto["total"], 2001)
         self.assertEqual({f["sede"]: f["total"] for f in contexto["por_sede"]}, {"Quito": 1000, "Cuenca": 1001})
         self.assertNotIn("asistencias", contexto)  # sin listado fila por fila
+
+
+@override_settings(MEDIA_ROOT=MEDIA_TMP)
+class CoincidenciaAmbiguaTest(APITestCase):
+    def setUp(self):
+        pool.invalidar()
+        self.client.force_authenticate(User.objects.create_user(username="agente", is_staff=True))
+        self.emb = get_embedding(cv2_leer("rostro_real.jpg"))
+
+    def _verificar(self):
+        return self.client.post("/api/verificar/", {"sede": "Q", "foto": _foto("rostro_real.jpg")}, format="multipart")
+
+    def test_un_rostro_en_dos_postulantes_no_marca_a_ninguno(self):
+        # Registros anteriores al chequeo de duplicados: el 1:N elegía uno de
+        # los dos casi al azar y le acreditaba la asistencia.
+        for cedula in ("1710034065", "1710034073"):
+            Postulante.objects.create(nombres="X", apellidos="Y", cedula=cedula, estatura_cm=170, embedding=self.emb)
+        r = self._verificar()
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertFalse(r.data["verificado"])
+        self.assertEqual(r.data["motivo"], "coincidencia_ambigua")
+        self.assertEqual(Asistencia.objects.count(), 0)
+
+    def test_fotos_adicionales_del_mismo_postulante_no_son_ambiguedad(self):
+        p = Postulante.objects.create(nombres="X", apellidos="Y", cedula="1710034065", estatura_cm=170, embedding=self.emb)
+        p.fotos_adicionales.create(foto=_foto("rostro_real.jpg"), embedding=self.emb)
+        r = self._verificar()
+        self.assertTrue(r.data["verificado"])
+        self.assertEqual(Asistencia.objects.get().postulante, p)

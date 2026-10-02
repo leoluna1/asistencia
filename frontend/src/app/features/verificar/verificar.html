@@ -59,6 +59,21 @@
       </div>
     }
 
+    @if (resultado()?.motivo === 'coincidencia_ambigua') {
+      <div class="paso-resultado agotado">
+        <mat-icon class="icono">group</mat-icon>
+        <h2>Coincide con más de un postulante</h2>
+        <p>
+          Este rostro está registrado con más de una cédula, así que no se marcó la
+          asistencia de nadie. Un agente debe registrarla a mano, verificando la cédula física.
+        </p>
+        <div class="acciones">
+          <button mat-stroked-button (click)="reintentarDesdeElInicio()">Reintentar</button>
+          <a mat-flat-button color="accent" routerLink="/dashboard">Registrar a mano</a>
+        </div>
+      </div>
+    }
+
     @if (agotado()) {
       <div class="paso-resultado agotado">
         <mat-icon class="icono">error_outline</mat-icon>

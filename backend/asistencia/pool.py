@@ -105,3 +105,17 @@ def mejor_coincidencia_en_pool(
     similitudes = matriz @ (consulta / norma)
     mejor = int(np.argmax(similitudes))
     return int(ids[mejor]), float(similitudes[mejor])
+
+
+def segunda_coincidencia(embedding_consulta, ids: np.ndarray, matriz: np.ndarray, excluir_id: int) -> float | None:
+    """Similitud del mejor candidato que NO sea `excluir_id` (sus fotos
+    adicionales cuentan como él mismo). La usa el kiosco para no acreditar la
+    asistencia cuando un mismo rostro quedó enrolado en dos postulantes."""
+    otros = ids != excluir_id
+    if not otros.any():
+        return None
+    consulta = np.asarray(embedding_consulta, dtype=np.float32)
+    norma = np.linalg.norm(consulta)
+    if norma == 0:
+        return None
+    return float((matriz[otros] @ (consulta / norma)).max())
