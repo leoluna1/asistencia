@@ -1080,39 +1080,6 @@ class ExportarAsistenciasViewTest(APITestCase):
         )
         return Asistencia.objects.create(postulante=otro, sede="Quito")
 
-    @patch("asistencia.views.MAX_FILAS_PDF", 1)
-    def test_pdf_rechaza_una_exportacion_demasiado_grande(self):
-        # Medido el 2026-09-28 con 20.004 asistencias: el PDF tardaba 500 s y
-        # usaba 1,8 GB de RAM — en producción el proxy corta a los 30-60 s y el
-        # worker queda quemando memoria. Mejor un 400 que explique qué hacer.
-        self._segunda_asistencia()
-        self.client.force_authenticate(self.agente)
-
-        response = self.client.get(self.url, {"formato": "pdf"})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        mensaje = str(response.data)
-        self.assertIn("CSV", mensaje)  # le dice al agente por dónde salir
-        self.assertIn("2", mensaje)  # cuántas filas tiene el filtro actual
-
-    @patch("asistencia.views.MAX_FILAS_PDF", 1)
-    def test_el_limite_del_pdf_no_afecta_al_csv(self):
-        # El CSV es justamente la salida para el volumen completo (1,6 s y
-        # 1,8 MB con 20.004 filas) — el límite es solo del PDF.
-        self._segunda_asistencia()
-        self.client.force_authenticate(self.agente)
-
-        response = self.client.get(self.url, {"formato": "csv"})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        lineas = [l for l in response.content.decode("utf-8-sig").strip().split("\r\n") if l]
-        self.assertEqual(len(lineas), 3)  # encabezado + 2 filas
-
-    @patch("asistencia.views.MAX_FILAS_PDF", 1)
-    def test_pdf_dentro_del_limite_se_exporta_igual(self):
-        self.client.force_authenticate(self.agente)
-        response = self.client.get(self.url, {"formato": "pdf"})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.content.startswith(b"%PDF"))
-
     def test_exporta_respetando_filtros(self):
         otro = Postulante.objects.create(
             nombres="Luis", apellidos="Diaz", cedula="2222222222",

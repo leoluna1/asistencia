@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { CameraCapture } from '../../shared/camera-capture/camera-capture';
@@ -20,6 +21,7 @@ const MAX_INTENTOS = 3; // decisión confirmada: reintento automático, luego ag
     RouterLink,
     MatButtonModule,
     MatFormFieldModule,
+    DatePipe,
     MatIconModule,
     MatInputModule,
     CameraCapture

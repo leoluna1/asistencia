@@ -16,6 +16,33 @@
   </header>
 
   <div class="contenido">
+    @if (alertas().length) {
+      <div class="tarjeta-alertas" role="alert">
+        <h2>
+          <mat-icon>warning</mat-icon>
+          Intentos repetidos en kioscos ({{ alertas().length }})
+        </h2>
+        <p class="ayuda">
+          Estas personas ya tenían asistencia y volvieron a pasar por un kiosco: puede ser un
+          error o una suplantación. Revisá cada caso.
+        </p>
+        @for (alerta of alertas(); track alerta.id) {
+          <div class="alerta">
+            <div>
+              <strong>{{ alerta.nombres }} {{ alerta.apellidos }}</strong>
+              <span class="mono">{{ alerta.cedula }}</span>
+              <div class="detalle">
+                Asistió en {{ alerta.sede_original || 'otra sede' }}
+                a las {{ alerta.primera_asistencia | date: 'HH:mm' }} · volvió a pasar en
+                {{ alerta.sede }} a las {{ alerta.intentado_en | date: 'HH:mm' }}
+              </div>
+            </div>
+            <button mat-stroked-button (click)="marcarRevisada(alerta.id)">Revisado</button>
+          </div>
+        }
+      </div>
+    }
+
     <div class="tarjeta-filtros">
       <div class="fila-filtros">
         <mat-form-field appearance="outline">
@@ -54,7 +81,7 @@
           } @else {
             <mat-icon>picture_as_pdf</mat-icon>
           }
-          Exportar PDF
+          Exportar PDF (resumen)
         </button>
       </div>
       @if (errorExportar()) {

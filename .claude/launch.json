@@ -4,7 +4,7 @@
     {
       "name": "django-backend",
       "runtimeExecutable": "/bin/sh",
-      "runtimeArgs": ["-c", "exec /Users/leitolu/Desktop/proyectos/asistencia/backend/venv/bin/python /Users/leitolu/Desktop/proyectos/asistencia/backend/manage.py runserver 127.0.0.1:$PORT"],
+      "runtimeArgs": ["-c", "exec env DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib /Users/leitolu/Desktop/proyectos/asistencia/backend/venv/bin/python /Users/leitolu/Desktop/proyectos/asistencia/backend/manage.py runserver 127.0.0.1:$PORT"],
       "port": 8000,
       "autoPort": true
     }

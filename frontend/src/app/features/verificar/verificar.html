@@ -43,13 +43,16 @@
         }
         <h2>{{ resultado()?.postulante?.nombres }} {{ resultado()?.postulante?.apellidos }}</h2>
         <p class="cedula-referencia">Cédula <span class="mono">{{ resultado()?.postulante?.cedula }}</span> · compárala con la cédula física</p>
-        <p>
-          {{
-            resultado()?.ya_registrado
-              ? 'La asistencia ya estaba registrada.'
-              : 'Asistencia registrada correctamente.'
-          }}
-        </p>
+        @if (resultado()?.ya_registrado) {
+          <!-- Intento repetido: el panel de agentes también recibe la alerta. -->
+          <p class="aviso-repetido">
+            Este postulante ya registró asistencia a las
+            {{ resultado()?.verificado_en | date: 'HH:mm' }} en la sede
+            {{ resultado()?.sede_original }}. Avisá a un supervisor.
+          </p>
+        } @else {
+          <p>Asistencia registrada correctamente.</p>
+        }
         <button mat-flat-button color="primary" (click)="resultado.set(null)">
           Verificar otro postulante
         </button>

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Asistencia, FotoPostulante, Postulante
+from .models import Asistencia, FotoPostulante, IntentoRepetido, Postulante
 
 
 class FotoPostulanteInline(admin.TabularInline):
@@ -36,3 +36,14 @@ class AsistenciaAdmin(admin.ModelAdmin):
     list_display = ("postulante", "sede", "metodo", "verificado_en", "forzado_por")
     list_filter = ("sede", "metodo")
     autocomplete_fields = ("postulante",)
+
+
+@admin.register(IntentoRepetido)
+class IntentoRepetidoAdmin(admin.ModelAdmin):
+    list_display = ("postulante", "sede", "intentado_en")
+    list_filter = ("sede",)
+    search_fields = ("postulante__cedula", "postulante__nombres", "postulante__apellidos")
+    readonly_fields = ("postulante", "sede", "intentado_en")
+
+    def has_add_permission(self, request):
+        return False  # solo los genera el kiosco

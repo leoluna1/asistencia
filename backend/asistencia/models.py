@@ -121,3 +121,18 @@ class Asistencia(models.Model):
 
     def __str__(self):
         return f"{self.postulante} — {self.verificado_en:%Y-%m-%d %H:%M}"
+
+
+class IntentoRepetido(models.Model):
+    """Alguien que YA tenía asistencia volvió a pasar por un kiosco: puede ser un
+    error o una suplantación. El panel lo muestra como alerta (ver
+    IntentosRepetidosView) y queda el registro histórico."""
+
+    postulante = models.ForeignKey(
+        Postulante, on_delete=models.CASCADE, related_name="intentos_repetidos"
+    )
+    sede = models.CharField(max_length=100)  # dónde se intentó de nuevo
+    intentado_en = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    def __str__(self):
+        return f"{self.postulante} — intento repetido en {self.sede}"

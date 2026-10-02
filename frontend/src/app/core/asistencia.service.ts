@@ -6,6 +6,7 @@ import { paramsDeFiltros } from './filtros-asistencia';
 import {
   FilaAsistencia,
   FiltrosAsistencia,
+  IntentoRepetido,
   ResultadoManual,
   ResultadoVerificacion,
   ResumenAsistencias
@@ -49,6 +50,12 @@ export class AsistenciaService {
       this.http.get<ResumenAsistencias>(`${API_BASE_URL}/asistencias/resumen/`, {
         params: paramsDeFiltros(filtros)
       })
+    );
+  }
+
+  intentosRepetidos(): Promise<IntentoRepetido[]> {
+    return firstValueFrom(
+      this.http.get<IntentoRepetido[]>(`${API_BASE_URL}/asistencias/intentos-repetidos/`)
     );
   }
 

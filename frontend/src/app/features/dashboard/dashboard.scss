@@ -197,3 +197,45 @@
     margin: 0;
   }
 }
+
+.tarjeta-alertas {
+  margin-bottom: var(--pne-espacio-md);
+  padding: var(--pne-espacio-md);
+  border: 2px solid var(--pne-aviso);
+  border-radius: 12px;
+  background: #fff8ec;
+
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--pne-aviso);
+  }
+
+  .ayuda {
+    margin: 6px 0 12px;
+    color: var(--pne-tinta-suave);
+  }
+
+  .alerta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--pne-borde);
+  }
+
+  .mono {
+    margin-left: 8px;
+  }
+
+  .detalle {
+    margin-top: 2px;
+    font-size: 0.9rem;
+    color: var(--pne-tinta-suave);
+  }
+}

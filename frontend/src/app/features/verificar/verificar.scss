@@ -142,3 +142,11 @@
   font-size: 1.1rem;
   color: var(--pne-tinta-suave);
 }
+
+.aviso-repetido {
+  padding: 10px 14px;
+  border-left: 4px solid var(--pne-aviso);
+  background: #fff8ec;
+  color: var(--pne-tinta);
+  font-weight: 600;
+}

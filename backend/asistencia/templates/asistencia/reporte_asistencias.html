@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: A4 landscape; margin: 2cm; }
+  @page { size: A4; margin: 2cm; }
   body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1b2a3d; margin: 0; }
   header { background: #16283F; color: #fff; padding: 16px 24px; }
   header h1 { margin: 0; font-size: 18px; }
@@ -14,37 +14,50 @@
   td { padding: 6px 10px; border-bottom: 1px solid #dde3ea; }
   tr:nth-child(even) td { background: #f7f8fa; }
   .mono { font-family: 'Courier New', monospace; }
+  h2 { font-size: 13px; margin: 22px 0 0; color: #16283F; }
+  .num { text-align: right; }
+  .nota { margin-top: 24px; font-size: 10px; color: #55647a; }
 </style>
 </head>
 <body>
   <header>
-    <h1>Asistencia — Policía Nacional</h1>
-    <p>Generado el {% now "d/m/Y H:i" %} — {{ total }} registro{{ total|pluralize }}</p>
+    <h1>Resumen de asistencia — Policía Nacional</h1>
+    <p>Generado el {% now "d/m/Y H:i" %} — {{ total }} asistencia{{ total|pluralize }} con los filtros aplicados</p>
   </header>
   <div class="acento"></div>
+
+  <h2>Por sede</h2>
   <table>
-    <thead>
-      <tr>
-        <th>Cédula</th>
-        <th>Nombres</th>
-        <th>Apellidos</th>
-        <th>Sede</th>
-        <th>Método</th>
-        <th>Hora</th>
-      </tr>
-    </thead>
+    <thead><tr><th>Sede</th><th class="num">Asistencias</th></tr></thead>
     <tbody>
-      {% for asistencia in asistencias %}
-      <tr>
-        <td class="mono">{{ asistencia.postulante.cedula }}</td>
-        <td>{{ asistencia.postulante.nombres }}</td>
-        <td>{{ asistencia.postulante.apellidos }}</td>
-        <td>{{ asistencia.sede }}</td>
-        <td>{{ asistencia.get_metodo_display }}</td>
-        <td>{{ asistencia.verificado_en|date:"Y-m-d H:i" }}</td>
-      </tr>
+      {% for fila in por_sede %}
+      <tr><td>{{ fila.sede|default:"Sin sede" }}</td><td class="num">{{ fila.total }}</td></tr>
+      {% empty %}
+      <tr><td colspan="2">Sin asistencias.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+
+  <h2>Por método</h2>
+  <table>
+    <thead><tr><th>Método</th><th class="num">Asistencias</th></tr></thead>
+    <tbody>
+      {% for fila in por_metodo %}
+      <tr><td>{{ fila.nombre }}</td><td class="num">{{ fila.total }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Por hora</h2>
+  <table>
+    <thead><tr><th>Hora</th><th class="num">Asistencias</th></tr></thead>
+    <tbody>
+      {% for fila in por_hora %}
+      <tr><td>{{ fila.hora|localtime|date:"d/m/Y H:00" }}</td><td class="num">{{ fila.total }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="nota">El listado completo, fila por fila, se exporta en CSV.</p>
 </body>
 </html>

@@ -37,7 +37,7 @@ from .facial import (
     mejor_coincidencia,
     validar_calidad_registro,
 )
-from .models import Asistencia, FotoPostulante, Postulante
+from .models import Asistencia, FotoPostulante, IntentoRepetido, Postulante
 from .serializers import (
     AsistenciaSerializer,
     FotoPostulanteSerializer,
@@ -624,10 +624,15 @@ class VerificarAsistenciaView(APIView):
             },
         )
 
+        if not creada:
+            IntentoRepetido.objects.create(postulante=postulante, sede=sede)
+
         return Response(
             {
                 "verificado": True,
                 "ya_registrado": not creada,
+                # Para el aviso del kiosco: dónde había asistido la primera vez.
+                "sede_original": asistencia.sede,
                 "confianza": confianza,
                 "postulante": PostulanteVerificacionSerializer(postulante, context={"request": request}).data,
                 "verificado_en": asistencia.verificado_en,
@@ -721,6 +726,21 @@ class ListaAsistenciasView(generics.ListAPIView):
         return _filtrar_asistencias(queryset, self.request)
 
 
+def _resumen(queryset):
+    """Agregados en la base (nunca filas a Python): los usan los gráficos del
+    panel y el PDF de resumen, así ambos muestran exactamente lo mismo."""
+    return {
+        "por_sede": list(queryset.values("sede").annotate(total=Count("id")).order_by("-total")),
+        "por_hora": list(
+            queryset.annotate(hora=TruncHour("verificado_en"))
+            .values("hora")
+            .annotate(total=Count("id"))
+            .order_by("hora")
+        ),
+        "por_metodo": list(queryset.values("metodo").annotate(total=Count("id")).order_by("metodo")),
+    }
+
+
 class ResumenAsistenciasView(APIView):
     """Agregados para los gráficos del dashboard (por sede, por hora, por método),
     calculados en la base de datos — nunca trae todas las filas a Python. Mismos
@@ -730,22 +750,7 @@ class ResumenAsistenciasView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        queryset = _filtrar_asistencias(Asistencia.objects.all(), request)
-
-        por_sede = list(
-            queryset.values("sede").annotate(total=Count("id")).order_by("-total")
-        )
-        por_hora = list(
-            queryset.annotate(hora=TruncHour("verificado_en"))
-            .values("hora")
-            .annotate(total=Count("id"))
-            .order_by("hora")
-        )
-        por_metodo = list(
-            queryset.values("metodo").annotate(total=Count("id")).order_by("metodo")
-        )
-
-        return Response({"por_sede": por_sede, "por_hora": por_hora, "por_metodo": por_metodo})
+        return Response(_resumen(_filtrar_asistencias(Asistencia.objects.all(), request)))
 
 
 _CARACTERES_FORMULA_CSV = ("=", "+", "-", "@", "\t", "\r")
@@ -763,20 +768,12 @@ def _celda_csv_segura(valor):
     return valor
 
 
-# Tope de filas del PDF. Medido el 2026-09-28 con datos de prueba al volumen
-# real de la convocatoria: weasyprint tarda ~4,8 ms por fila hasta unas 2.000
-# (9,7 s), pero a 20.004 filas se degrada a 25 ms/fila — 500 s y 1,8 GB de RAM.
-# Eso en producción no termina nunca: el proxy corta la request a los 30-60 s y
-# el worker se queda quemando memoria, dejando sin atender a los puestos de
-# verificación. Un PDF de 20.000 filas son ~400 páginas que nadie lee: para el
-# volumen completo está el CSV, que sale en 1,6 s.
-MAX_FILAS_PDF = 2000
 
 
 class ExportarAsistenciasView(APIView):
-    """Exporta TODAS las filas que matchean los filtros (no solo la página actual
-    del dashboard) en CSV o PDF — mismos filtros que ListaAsistenciasView.
-    El PDF está topado en MAX_FILAS_PDF filas; el CSV no tiene límite."""
+    """Exporta lo que matchea los filtros (no solo la página actual del
+    dashboard) — mismos filtros que ListaAsistenciasView. CSV: todas las filas.
+    PDF: resumen agregado (total, por sede, por método, por hora)."""
 
     permission_classes = [IsAdminUser]
 
@@ -792,18 +789,6 @@ class ExportarAsistenciasView(APIView):
 
         if formato == "csv":
             return self._csv(queryset)
-
-        total = queryset.count()
-        if total > MAX_FILAS_PDF:
-            raise ValidationError(
-                {
-                    "formato": (
-                        f"El PDF está limitado a {MAX_FILAS_PDF} filas y el filtro "
-                        f"actual tiene {total}. Acotá por fecha, método o búsqueda, "
-                        f"o exportá en CSV, que no tiene límite."
-                    )
-                }
-            )
         return self._pdf(queryset)
 
     def _csv(self, queryset):
@@ -836,13 +821,19 @@ class ExportarAsistenciasView(APIView):
         # cada arranque del server por una exportación que se usa ocasionalmente.
         from weasyprint import HTML
 
+        # Resumen, no listado: el listado de 20k filas tardaba ~500 s y 1,8 GB
+        # (medido 2026-09-28). El detalle completo sale en CSV.
+        metodos = dict(Asistencia.Metodo.choices)
+        resumen = _resumen(queryset)
+        for fila in resumen["por_metodo"]:
+            fila["nombre"] = metodos.get(fila["metodo"], fila["metodo"])
         html = render_to_string(
             "asistencia/reporte_asistencias.html",
-            {"asistencias": queryset, "total": queryset.count()},
+            {"total": queryset.count(), **resumen},
         )
         pdf = HTML(string=html).write_pdf()
         response = HttpResponse(pdf, content_type="application/pdf")
-        response["Content-Disposition"] = 'attachment; filename="asistencias.pdf"'
+        response["Content-Disposition"] = 'attachment; filename="resumen-asistencias.pdf"'
         return response
 
 
@@ -915,3 +906,35 @@ def foto_firmada(request, firma):
     response = FileResponse(default_storage.open(nombre))
     response["Cache-Control"] = "private, max-age=3600"
     return response
+
+
+class IntentosRepetidosView(APIView):
+    """Alertas del panel: intentos repetidos de las últimas 24 h, más nuevos
+    primero. El panel la consulta en el mismo ciclo de polling que la lista."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        desde = now() - datetime.timedelta(hours=24)
+        intentos = (
+            IntentoRepetido.objects.filter(intentado_en__gte=desde)
+            .select_related("postulante__asistencia")
+            .order_by("-intentado_en")[:50]
+        )
+        return Response(
+            [
+                {
+                    "id": i.id,
+                    "cedula": i.postulante.cedula,
+                    "nombres": i.postulante.nombres,
+                    "apellidos": i.postulante.apellidos,
+                    "sede": i.sede,
+                    "intentado_en": i.intentado_en,
+                    "sede_original": getattr(getattr(i.postulante, "asistencia", None), "sede", None),
+                    "primera_asistencia": getattr(
+                        getattr(i.postulante, "asistencia", None), "verificado_en", None
+                    ),
+                }
+                for i in intentos
+            ]
+        )

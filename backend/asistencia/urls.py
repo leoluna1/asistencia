@@ -4,6 +4,7 @@ from .views import (
     AgregarFotoPostulanteView,
     ExportarAsistenciasView,
     ForzarAsistenciaView,
+    IntentosRepetidosView,
     ListaAsistenciasView,
     MiPostulanteView,
     ProbarEncuadreView,
@@ -44,4 +45,9 @@ urlpatterns = [
     path("asistencias/", ListaAsistenciasView.as_view(), name="lista-asistencias"),
     path("asistencias/resumen/", ResumenAsistenciasView.as_view(), name="resumen-asistencias"),
     path("asistencias/exportar/", ExportarAsistenciasView.as_view(), name="exportar-asistencias"),
+    path(
+        "asistencias/intentos-repetidos/",
+        IntentosRepetidosView.as_view(),
+        name="intentos-repetidos",
+    ),
 ]

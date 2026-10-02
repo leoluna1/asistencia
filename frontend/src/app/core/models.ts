@@ -29,6 +29,7 @@ export interface ResultadoVerificacion {
   motivo?: 'no_se_detecto_rostro' | 'sin_coincidencia';
   confianza?: number | null;
   ya_registrado?: boolean;
+  sede_original?: string;
   postulante?: PostulanteVerificacion;
   verificado_en?: string;
 }
@@ -67,4 +68,16 @@ export interface ResumenAsistencias {
   por_sede: { sede: string; total: number }[];
   por_hora: { hora: string; total: number }[];
   por_metodo: { metodo: string; total: number }[];
+}
+
+/** Alguien que ya tenía asistencia volvió a pasar por un kiosco. */
+export interface IntentoRepetido {
+  id: number;
+  cedula: string;
+  nombres: string;
+  apellidos: string;
+  sede: string;
+  intentado_en: string;
+  sede_original: string | null;
+  primera_asistencia: string | null;
 }

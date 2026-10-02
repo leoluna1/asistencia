@@ -12,8 +12,9 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { AsistenciaService } from '../../core/asistencia.service';
 import { AuthService } from '../../core/auth.service';
+import { alertasPendientes, marcarRevisada } from '../../core/alertas';
 import { mensajeDeErrorDeBlob, primerMensajeDeError } from '../../core/errores';
-import { FilaAsistencia, FiltrosAsistencia } from '../../core/models';
+import { FilaAsistencia, FiltrosAsistencia, IntentoRepetido } from '../../core/models';
 import { PNE_CHART_SCHEME, porHoraAGrafico, porMetodoAGrafico, porSedeAGrafico } from '../../core/resumen-charts';
 import { InlineMessage } from '../../shared/inline-message/inline-message';
 
@@ -44,6 +45,8 @@ const DEBOUNCE_BUSQUEDA_MS = 300;
 })
 export class Dashboard implements OnInit, OnDestroy {
   readonly filas = signal<FilaAsistencia[]>([]);
+  // Intentos repetidos en kioscos (posible error o suplantación), sin revisar.
+  readonly alertas = signal<IntentoRepetido[]>([]);
   readonly actualizando = signal(false);
   readonly columnas = [
     'foto',
@@ -89,6 +92,11 @@ export class Dashboard implements OnInit, OnDestroy {
     private router: Router
   ) {}
 
+  marcarRevisada(id: number): void {
+    marcarRevisada(id);
+    this.alertas.update((lista) => lista.filter((a) => a.id !== id));
+  }
+
   cerrarSesion(): void {
     this.auth.logout();
     this.router.navigate(['/']);
@@ -125,10 +133,14 @@ export class Dashboard implements OnInit, OnDestroy {
     // Lista y resumen son independientes (si uno falla, el otro sigue
     // funcionando igual) — se piden en paralelo con allSettled en vez de una
     // await tras otra, que doblaba la latencia de cada poll de 4s sin motivo.
-    const [resultadoLista, resultadoResumen] = await Promise.allSettled([
+    const [resultadoLista, resultadoResumen, resultadoAlertas] = await Promise.allSettled([
       this.asistencia.listar(this.filtrosActuales),
-      this.asistencia.resumen(this.filtrosActuales)
+      this.asistencia.resumen(this.filtrosActuales),
+      this.asistencia.intentosRepetidos()
     ]);
+    if (resultadoAlertas.status === 'fulfilled') {
+      this.alertas.set(alertasPendientes(resultadoAlertas.value));
+    }
     this.actualizando.set(false);
 
     if (resultadoLista.status === 'fulfilled') {
