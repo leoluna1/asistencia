@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -31,12 +31,17 @@ export class Login {
   password = '';
   readonly cargando = signal(false);
   readonly error = signal<string | null>(null);
+  // adminGuard manda acá con ?motivo=solo-agentes (registro, kiosco, dashboard).
+  readonly soloAgentes: boolean;
 
   constructor(
     private auth: AuthService,
     private postulantes: PostulantesService,
-    private router: Router
-  ) {}
+    private router: Router,
+    route: ActivatedRoute
+  ) {
+    this.soloAgentes = route.snapshot.queryParamMap.get('motivo') === 'solo-agentes';
+  }
 
   async ingresar(): Promise<void> {
     this.cargando.set(true);

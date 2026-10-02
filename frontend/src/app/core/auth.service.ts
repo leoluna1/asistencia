@@ -19,13 +19,36 @@ function esStaff(accessToken: string | null): boolean {
   }
 }
 
+// Sin esto, un token vencido en localStorage seguía contando como sesión: el
+// agente veía el registro o el dashboard y recién al enviar algo le daba 401.
+function vigente(accessToken: string | null): boolean {
+  if (!accessToken) return false;
+  try {
+    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+    return typeof payload.exp === 'number' && payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   readonly username = signal<string | null>(localStorage.getItem(USERNAME_KEY));
-  readonly isAuthenticated = signal<boolean>(!!localStorage.getItem(ACCESS_KEY));
-  readonly isStaff = signal<boolean>(esStaff(localStorage.getItem(ACCESS_KEY)));
+  readonly isAuthenticated = signal<boolean>(false);
+  readonly isStaff = signal<boolean>(false);
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) {
+    const token = localStorage.getItem(ACCESS_KEY);
+    this.isAuthenticated.set(vigente(token));
+    this.isStaff.set(vigente(token) && esStaff(token));
+    this.cerrarSiVencida();
+  }
+
+  /** Los guards la llaman antes de decidir: cubre el token que vence con la app abierta. */
+  cerrarSiVencida(): void {
+    const token = localStorage.getItem(ACCESS_KEY);
+    if (token && !vigente(token)) this.logout();
+  }
 
   async login(username: string, password: string): Promise<void> {
     const respuesta = await firstValueFrom(

@@ -4,7 +4,9 @@ import { CanActivateFn } from '@angular/router';
 import { AuthService } from './auth.service';
 
 export const authGuard: CanActivateFn = () => {
-  if (inject(AuthService).isAuthenticated()) {
+  const auth = inject(AuthService);
+  auth.cerrarSiVencida();
+  if (auth.isAuthenticated()) {
     return true;
   }
   return inject(Router).createUrlTree(['/login']);
@@ -17,9 +19,15 @@ export const authGuard: CanActivateFn = () => {
 // propio panel en vez de al login (ya inició sesión, solo no tiene permiso acá).
 export const adminGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
+  auth.cerrarSiVencida();
   if (auth.isStaff()) {
     return true;
   }
   const router = inject(Router);
-  return router.createUrlTree([auth.isAuthenticated() ? '/mi-postulante' : '/login']);
+  if (auth.isAuthenticated()) {
+    return router.createUrlTree(['/mi-postulante']);
+  }
+  // Con el motivo, el login explica por qué se llegó ahí (el registro es
+  // supervisado: sin esto parecía que "Registro" estaba roto).
+  return router.createUrlTree(['/login'], { queryParams: { motivo: 'solo-agentes' } });
 };

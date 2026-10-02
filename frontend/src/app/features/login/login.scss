@@ -1,1 +1,10 @@
 // estilos específicos de login (por ahora ninguno — ver .pantalla/.tarjeta en styles.scss)
+
+.aviso-agentes {
+  margin: 0 0 var(--pne-espacio-md, 16px);
+  padding: 12px 14px;
+  border-left: 4px solid var(--pne-dorado);
+  background: var(--pne-fondo);
+  color: var(--pne-tinta);
+  line-height: 1.45;
+}

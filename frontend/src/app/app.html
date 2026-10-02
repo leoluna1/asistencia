@@ -1,7 +1,9 @@
 <nav class="nav">
   <a class="marca" routerLink="/">Policía Nacional · Postulantes</a>
   <span class="nav-espaciador"></span>
-  <a routerLink="/registro" routerLinkActive="active">Registro</a>
+  @if (auth.isStaff()) {
+    <a routerLink="/registro" routerLinkActive="active">Registro</a>
+  }
   <a routerLink="/login" routerLinkActive="active">Ingresar</a>
 </nav>
 

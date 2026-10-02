@@ -1,6 +1,13 @@
 <div class="pantalla">
   <mat-card appearance="outlined" class="tarjeta">
     <h2>Ingresar al sistema</h2>
+    @if (soloAgentes) {
+      <p class="aviso-agentes">
+        Esa sección es solo para agentes. El registro de postulantes lo hace un
+        agente en el puesto de registro, con tu cédula física. Ingresá con una
+        cuenta de agente para continuar.
+      </p>
+    }
 
     <mat-form-field appearance="outline">
       <mat-label>Usuario (cédula si sos postulante)</mat-label>
