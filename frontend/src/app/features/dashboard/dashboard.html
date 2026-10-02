@@ -8,8 +8,10 @@
       }
     </div>
     <div class="usuario-grupo">
+      <a mat-flat-button color="accent" routerLink="/registro">Registrar postulante</a>
+      <a mat-stroked-button class="btn-salir" routerLink="/verificar">Kiosco</a>
       <span class="usuario">{{ auth.username() }}</span>
-      <button mat-stroked-button class="btn-salir" (click)="auth.logout()">Cerrar sesión</button>
+      <button mat-stroked-button class="btn-salir" (click)="cerrarSesion()">Cerrar sesión</button>
     </div>
   </header>
 

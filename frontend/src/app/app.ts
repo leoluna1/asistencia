@@ -9,6 +9,6 @@ import { AuthService } from './core/auth.service';
   templateUrl: './app.html',
 })
 export class App {
-  // "Registro" solo para agentes: el registro es supervisado (ver adminGuard).
+  // "Ingresar" solo sin sesión; el agente navega desde su panel.
   constructor(readonly auth: AuthService) {}
 }

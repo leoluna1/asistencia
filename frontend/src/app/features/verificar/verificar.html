@@ -1,5 +1,6 @@
 <div class="verificacion">
   <header class="encabezado">
+    <a class="enlace-tarjeta" routerLink="/dashboard">← Volver al panel</a>
     <h1>Verificación de asistencia</h1>
     @if (sede && (enSesion() || resultado() || agotado())) {
       <span class="sede-activa">{{ sede }}</span>

@@ -1,10 +1,11 @@
 <nav class="nav">
   <a class="marca" routerLink="/">Policía Nacional · Postulantes</a>
   <span class="nav-espaciador"></span>
-  @if (auth.isStaff()) {
-    <a routerLink="/registro" routerLinkActive="active">Registro</a>
+  <!-- Con sesión iniciada cada pantalla trae su propia navegación (panel del
+       agente, mi-postulante): acá solo hace falta para entrar. -->
+  @if (!auth.isAuthenticated()) {
+    <a routerLink="/login" routerLinkActive="active">Ingresar</a>
   }
-  <a routerLink="/login" routerLinkActive="active">Ingresar</a>
 </nav>
 
 <router-outlet />

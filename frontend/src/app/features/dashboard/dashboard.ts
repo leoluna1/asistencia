@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
 import { BarChartModule, LineChartModule, PieChartModule } from '@swimlane/ngx-charts';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -23,6 +24,7 @@ const DEBOUNCE_BUSQUEDA_MS = 300;
   selector: 'app-dashboard',
   standalone: true,
   imports: [
+    RouterLink,
     DatePipe,
     FormsModule,
     BarChartModule,
@@ -83,8 +85,14 @@ export class Dashboard implements OnInit, OnDestroy {
 
   constructor(
     private asistencia: AsistenciaService,
-    readonly auth: AuthService
+    readonly auth: AuthService,
+    private router: Router
   ) {}
+
+  cerrarSesion(): void {
+    this.auth.logout();
+    this.router.navigate(['/']);
+  }
 
   ngOnInit(): void {
     this.actualizar();
